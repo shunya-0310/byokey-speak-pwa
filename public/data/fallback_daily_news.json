@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "status": "preview",
+  "date": "2026-07-25",
+  "generatedAt": "2026-07-25T00:00:00Z",
+  "model": "bundled-preview",
+  "items": [
+    {
+      "id": "preview-politics-economy",
+      "category": "politics_economy",
+      "categoryLabel": "政治・経済",
+      "headline": "How global events can affect prices and everyday choices",
+      "summary": "Changes in trade, energy, and economic policy can reach daily life through prices, jobs, and travel. Looking at the links between a headline and ordinary choices makes economic news easier to discuss.",
+      "question": "Which price change have you noticed most in your daily life?",
+      "coachLeads": {
+        "friendly": "Have you noticed how a big economic story can quietly show up in everyday prices?",
+        "energetic": "Here is a big topic hiding in plain sight: world events can change what we pay every day.",
+        "calm": "It may be useful to look at how global economic changes reach our daily lives.",
+        "direct": "World events change prices. Which change has affected you?"
+      },
+      "sources": [
+        {
+          "title": "IMF World Economic Outlook",
+          "url": "https://www.imf.org/en/Publications/WEO"
+        }
+      ]
+    },
+    {
+      "id": "preview-technology",
+      "category": "technology",
+      "categoryLabel": "技術",
+      "headline": "AI assistants can now check current information and show sources",
+      "summary": "Search tools let an AI check the web when a question depends on current facts. Citations also give readers a way to inspect where an answer came from.",
+      "question": "When would you want an AI to search before answering?",
+      "coachLeads": {
+        "friendly": "You know how AI can sometimes answer with old information? Search tools are changing that.",
+        "energetic": "AI can now check what is happening right now and show its sources. That changes the conversation.",
+        "calm": "AI assistants are increasingly able to search current information and cite their sources.",
+        "direct": "Current answers need current sources. AI search makes that possible."
+      },
+      "sources": [
+        {
+          "title": "Google Search grounding in the Gemini API",
+          "url": "https://ai.google.dev/gemini-api/docs/generate-content/google-search"
+        }
+      ]
+    },
+    {
+      "id": "preview-sports",
+      "category": "sports",
+      "categoryLabel": "スポーツ",
+      "headline": "Why sports results make good conversation starters",
+      "summary": "A score is only the beginning of a sports story. Players, tactics, atmosphere, and surprising moments give learners many ways to express opinions in English.",
+      "question": "What was the last sports moment that surprised you?",
+      "coachLeads": {
+        "friendly": "Do you ever start talking about a score and end up discussing the whole game?",
+        "energetic": "A great sports moment gives us so much more to talk about than the final score.",
+        "calm": "Sports results can be useful starting points for discussing people, choices, and emotions.",
+        "direct": "The score is not the whole story. What moment mattered most?"
+      },
+      "sources": [
+        {
+          "title": "BBC Sport",
+          "url": "https://www.bbc.com/sport"
+        }
+      ]
+    },
+    {
+      "id": "preview-entertainment",
+      "category": "entertainment",
+      "categoryLabel": "エンタメ",
+      "headline": "Movies, streaming, music, and games compete for our attention",
+      "summary": "People move between many kinds of entertainment during the same week. Talking about what held your attention is a natural way to practice preferences and recommendations.",
+      "question": "What have you watched, played, or listened to recently?",
+      "coachLeads": {
+        "friendly": "Quick question: what has been winning your attention lately, movies, music, or games?",
+        "energetic": "There is so much entertainment competing for our time. What are you actually excited about?",
+        "calm": "Our entertainment habits move between movies, music, streaming, and games.",
+        "direct": "We have endless entertainment and limited time. What is worth yours?"
+      },
+      "sources": [
+        {
+          "title": "Variety",
+          "url": "https://variety.com/"
+        }
+      ]
+    }
+  ]
+}

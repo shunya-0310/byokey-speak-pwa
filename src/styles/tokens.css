@@ -1,0 +1,38 @@
+:root[data-theme='dark'] {
+  --parchment: #101b2c;
+  --parchment-light: #1a2840;
+  --parchment-deep: #22314e;
+  --ink: #e8ddbe;
+  --ink-faded: #b8aa83;
+  --coral: #d08a76;
+  --coral-deep: #e2a691;
+  --gold: #cfa43b;
+  --gold-dark: #a8842e;
+  --moss: #a3b47e;
+  --bubble-user: #283a55;
+  --bubble-system: #24324c;
+  --shadow: rgba(3, 7, 13, 0.48);
+}
+
+:root[data-theme='light'] {
+  --parchment: #f0e4c6;
+  --parchment-light: #f8efda;
+  --parchment-deep: #e4d2a8;
+  --ink: #3a2c18;
+  --ink-faded: #6e5b3a;
+  --coral: #6e2b26;
+  --coral-deep: #4c1d1a;
+  --gold: #a37e2c;
+  --gold-dark: #7c5e1e;
+  --moss: #55603a;
+  --bubble-user: #eadbb4;
+  --bubble-system: #e3cf9c;
+  --shadow: rgba(80, 49, 17, 0.18);
+}
+
+:root {
+  color-scheme: dark;
+  font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", YuMincho, serif;
+  background: var(--parchment);
+  color: var(--ink);
+}
