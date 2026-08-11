@@ -37,11 +37,12 @@ export function listenOnce(lang: "ja-JP" | "en-US") {
   });
 }
 
-export function speakCoachText(text: string, gender: VoiceGender, onEnd?: () => void) {
+export function speakCoachText(text: string, gender: VoiceGender, onEnd?: () => void, rate = 1) {
   if (!("speechSynthesis" in window)) return false;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(naturalReplyOf(text));
   utterance.lang = "en-US";
+  utterance.rate = Math.min(1.5, Math.max(0.6, rate));
   utterance.onend = () => onEnd?.();
   utterance.onerror = () => onEnd?.();
   const voices = window.speechSynthesis.getVoices();

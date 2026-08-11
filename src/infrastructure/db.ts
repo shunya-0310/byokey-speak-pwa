@@ -214,6 +214,7 @@ export async function exportSnapshot() {
       theme: settings.theme,
       voiceMode: settings.voiceMode,
       voiceGender: settings.voiceGender,
+      voiceRate: settings.voiceRate,
       soundEffectsEnabled: settings.soundEffectsEnabled
     },
     chats,

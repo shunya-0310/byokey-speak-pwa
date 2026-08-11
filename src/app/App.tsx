@@ -1,18 +1,19 @@
 import {
   BarChart3,
   BookOpen,
-  Check,
   Download,
   ExternalLink,
   Github,
+  Globe2,
+  Headphones,
   KeyRound,
   Loader2,
   MessageCircle,
   Mic,
   Moon,
+  Pause,
   Pin,
   Plus,
-  Search,
   Send,
   Settings,
   ShieldAlert,
@@ -108,11 +109,13 @@ export default function App() {
   const [chatPage, setChatPage] = useState<ChatPage>("list");
   const [activeChatId, setActiveChatId] = useState<string>("");
   const [draft, setDraft] = useState("");
+  const [draftUndoStack, setDraftUndoStack] = useState<string[]>([]);
   const [draftSource, setDraftSource] = useState<ChatMessage["inputSource"]>("TYPED");
   const [webSearch, setWebSearch] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [news, setNews] = useState<{ feed?: DailyNewsFeed; notice?: string }>({});
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [assist, setAssist] = useState<{ open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> }>({ open: false, stuck: "", suggestions: [] });
@@ -194,6 +197,7 @@ export default function App() {
   async function selectChat(chatId: string) {
     setActiveChatId(chatId);
     setChatPage("conversation");
+    setDraftUndoStack([]);
     await updateSettings({ lastOpenedChatId: chatId });
   }
 
@@ -204,20 +208,75 @@ export default function App() {
       await db.messages.put({ id: id("msg"), chatId: chat.id, role: "coach", text: opener, inputSource: "NONE", usedQuickAssist: false, sources, createdAt: Date.now() });
     }
     setDraft("");
+    setDraftUndoStack([]);
     setDraftSource("TYPED");
     await selectChat(chat.id);
     await reload();
   }
 
+  function rememberDraftForUndo(value: string) {
+    setDraftUndoStack((stack) => {
+      if (stack[stack.length - 1] === value) return stack;
+      return [...stack.slice(-24), value];
+    });
+  }
+
   function updateDraftFromUser(value: string) {
+    if (value !== draft) rememberDraftForUndo(draft);
     setDraft(value);
     setDraftSource(value.trim() ? mergeInputSource(draftSource, "TYPED") : "TYPED");
   }
 
   function appendToDraft(addition: string, source: ChatMessage["inputSource"]) {
     if (!addition.trim()) return;
+    rememberDraftForUndo(draft);
     setDraft((current) => `${current}${current ? " " : ""}${addition.trim()}`);
     setDraftSource((current) => mergeInputSource(current, source));
+  }
+
+  function undoDraftInput() {
+    const previous = draftUndoStack[draftUndoStack.length - 1];
+    if (previous === undefined) return;
+    setDraft(previous);
+    setDraftUndoStack((stack) => stack.slice(0, -1));
+    setDraftSource(previous.trim() ? "TYPED" : "TYPED");
+  }
+
+  async function cycleVoiceMode() {
+    const next = nextVoiceMode(currentData.settings.voiceMode);
+    await updateSettings({ voiceMode: next });
+    setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : "Voice Mode: フルオート");
+  }
+
+  function stopCurrentSpeech() {
+    stopSpeaking();
+    setSpeakingMessageId(null);
+  }
+
+  function speakMessage(message: ChatMessage, afterEnd?: () => void) {
+    const ok = speakCoachText(message.text, currentData.settings.voiceGender, () => {
+      setSpeakingMessageId((current) => current === message.id ? null : current);
+      afterEnd?.();
+    }, currentData.settings.voiceRate);
+    if (ok) {
+      setSpeakingMessageId(message.id);
+    } else {
+      setNotice("このブラウザは読み上げに対応していません。");
+    }
+  }
+
+  async function startAutoEnglishMic(mode: AppSettings["voiceMode"], baseSource: ChatMessage["inputSource"] = "VOICE") {
+    if (mode === "off") return;
+    try {
+      const spoken = await listenOnce("en-US");
+      if (mode === "fullAuto") {
+        await sendMessage(mergeInputSource(baseSource, "VOICE"), spoken);
+      } else {
+        appendToDraft(spoken, "VOICE");
+      }
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
   }
 
   async function sendMessage(source: ChatMessage["inputSource"] = draftSource, text = draft) {
@@ -246,6 +305,7 @@ export default function App() {
       createdAt: now
     };
     setDraft("");
+    setDraftUndoStack([]);
     setDraftSource("TYPED");
     setBusy("Geminiが返答中です");
     await db.messages.put(userMessage);
@@ -270,7 +330,8 @@ export default function App() {
         reply.japaneseExplanation ? `Japanese explanation: ${reply.japaneseExplanation}` : "",
         reply.betterOptions.length ? `Better options:\n${reply.betterOptions.join("\n")}` : ""
       ].filter(Boolean).join("\n\n");
-      await db.messages.put({ id: id("msg"), chatId: activeChat.id, role: "coach", text: coachText, inputSource: "NONE", usedQuickAssist: false, sources: result.sources, createdAt: Date.now() });
+      const coachMessage: ChatMessage = { id: id("msg"), chatId: activeChat.id, role: "coach", text: coachText, inputSource: "NONE", usedQuickAssist: false, sources: result.sources, createdAt: Date.now() };
+      await db.messages.put(coachMessage);
       for (const item of reply.vocabulary) {
         await saveVocabCard({ expression: item.expression, meaning: item.meaning, source: "Chats", chatId: activeChat.id });
       }
@@ -279,10 +340,8 @@ export default function App() {
       }
       await reload();
       if (currentData.settings.voiceMode !== "off") {
-        speakCoachText(coachText, currentData.settings.voiceGender, () => {
-          if (currentData.settings.voiceMode === "fullAuto") {
-            setNotice("Full Auto: ブラウザ制限により、続けるにはEN MicまたはJA Micをもう一度押してください。");
-          }
+        speakMessage(coachMessage, () => {
+          void startAutoEnglishMic(currentData.settings.voiceMode);
         });
       }
     } catch (caught) {
@@ -313,15 +372,6 @@ export default function App() {
     } finally {
       setBusy("");
     }
-  }
-
-  async function undoLastTurn() {
-    const lastUser = [...chatMessages].reverse().find((message) => message.role === "user");
-    if (!lastUser) return;
-    const after = chatMessages.filter((message) => message.createdAt >= lastUser.createdAt);
-    await db.messages.bulkDelete(after.map((message) => message.id));
-    setDraft(lastUser.text);
-    await reload();
   }
 
   async function translateMessage(message: ChatMessage) {
@@ -423,9 +473,12 @@ export default function App() {
           news={news.feed}
           draft={draft}
           setDraftFromUser={updateDraftFromUser}
+          settings={data.settings}
           webSearch={webSearch}
           setWebSearch={setWebSearch}
           page={chatPage}
+          canUndoDraft={draftUndoStack.length > 0}
+          speakingMessageId={speakingMessageId}
           onBackToChats={() => setChatPage("list")}
           onNewChat={() => newChat()}
           onNews={(item) => newChat(item.headline, "DAILY_NEWS", newsHiddenContext(item), newsVisibleOpener(item, data.settings.coachSkills), item.sources)}
@@ -442,11 +495,13 @@ export default function App() {
             await reload();
           }}
           onSend={() => sendMessage()}
-          onUndo={undoLastTurn}
+          onUndo={undoDraftInput}
           onAssist={() => setAssist({ open: true, stuck: "", suggestions: [] })}
+          onVoiceModeCycle={cycleVoiceMode}
           onTranslate={translateMessage}
           onReport={reportMessage}
-          onSpeak={(message) => speakCoachText(message.text, data.settings.voiceGender)}
+          onSpeak={(message) => speakMessage(message)}
+          onStopSpeak={stopCurrentSpeech}
           onMic={async (language) => {
             try {
               const spoken = await listenOnce(language);
@@ -461,7 +516,7 @@ export default function App() {
             }
           }}
         />}
-        {activeTab === "review" && <ReviewTab vocab={data.vocab} notes={data.notes} messages={data.messages} onReload={reload} />}
+        {activeTab === "review" && <ReviewTab vocab={data.vocab} messages={data.messages} onReload={reload} />}
         {activeTab === "progress" && <ProgressTab progress={progress} analyses={data.analyses} canAnalyze={canSendToGemini} onAnalyze={async () => {
           const userMessages = data.messages.filter((message) => message.role === "user");
           if (userMessages.length < 20) {
@@ -576,6 +631,12 @@ function mergeInputSource(current: ChatMessage["inputSource"], next: ChatMessage
   return "MIXED";
 }
 
+function nextVoiceMode(current: AppSettings["voiceMode"]): AppSettings["voiceMode"] {
+  if (current === "off") return "manual";
+  if (current === "manual") return "fullAuto";
+  return "off";
+}
+
 function Onboarding(props: { onDone: (consented: boolean) => void }) {
   const [page, setPage] = useState(0);
   const [consented, setConsented] = useState(false);
@@ -604,9 +665,12 @@ function ChatsTab(props: {
   news?: DailyNewsFeed;
   draft: string;
   setDraftFromUser: (value: string) => void;
+  settings: AppSettings;
   webSearch: boolean;
   setWebSearch: (value: boolean) => void;
   page: ChatPage;
+  canUndoDraft: boolean;
+  speakingMessageId: string | null;
   onBackToChats: () => void;
   onNewChat: () => void;
   onNews: (item: DailyNewsItem) => void;
@@ -616,9 +680,11 @@ function ChatsTab(props: {
   onSend: () => void;
   onUndo: () => void;
   onAssist: () => void;
+  onVoiceModeCycle: () => void;
   onTranslate: (message: ChatMessage) => void;
   onReport: (message: ChatMessage) => void;
   onSpeak: (message: ChatMessage) => void;
+  onStopSpeak: () => void;
   onMic: (language: "en-US" | "ja-JP") => void;
 }) {
   if (props.page === "conversation") {
@@ -633,21 +699,25 @@ function ChatsTab(props: {
           <div>{renderTextWithCompactLinks(message.text)}</div>
           {message.sources?.length ? <div className="source-list small">{message.sources.map((source) => <a key={`${source.title}-${source.url}`} href={source.url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {source.title && !source.title.startsWith("http") ? source.title : compactUrl(source.url)}</a>)}</div> : null}
           {message.role === "coach" && <div className="message-actions">
-            <button className="icon-button ghost" title="読み上げ" onClick={() => props.onSpeak(message)}><Volume2 size={17} /></button>
+            <button className="icon-button ghost" title={props.speakingMessageId === message.id ? "読み上げ停止" : "読み上げ"} onClick={() => props.speakingMessageId === message.id ? props.onStopSpeak() : props.onSpeak(message)}>{props.speakingMessageId === message.id ? <Pause size={17} /> : <Volume2 size={17} />}</button>
             <button className="icon-button ghost" title="翻訳" onClick={() => props.onTranslate(message)}>文</button>
             <button className="icon-button ghost" title="回答を報告" onClick={() => props.onReport(message)}><ShieldAlert size={17} /></button>
           </div>}
         </article>)}
       </div>
       <div className="composer">
+        {props.settings.voiceMode !== "off" && <p className="voice-mode-hint small">{props.settings.voiceMode === "manual" ? "✦ マニュアル送信: 読み上げ後に英語マイクが起動します" : "✦ フルオート: 音声入力が終わると自動で送信します"}</p>}
         <div className="composer-actions" aria-label="Conversation tools">
-          <button className="icon-button ghost" title="読み上げ停止" onClick={stopSpeaking}><Volume2 size={20} /></button>
+          <button className={`icon-button ghost voice-mode-button ${props.settings.voiceMode !== "off" ? "active" : ""}`} title="Voice Mode切替" onClick={props.onVoiceModeCycle}>
+            <Headphones size={20} />
+            {props.settings.voiceMode !== "off" && <span className="mode-badge">{props.settings.voiceMode === "manual" ? "→" : "⇔"}</span>}
+          </button>
           <button className="icon-button ghost" title="Quick Assist" onClick={props.onAssist}><Sparkles size={20} /></button>
-          <button className={`icon-button ghost ${props.webSearch ? "active" : ""}`} title="Web検索" onClick={() => props.setWebSearch(!props.webSearch)}><Search size={20} /></button>
-          <button className="icon-button ghost" title="Undo" onClick={props.onUndo}><Undo2 size={20} /></button>
+          <button className={`icon-button ghost ${props.webSearch ? "active" : ""}`} title="Web検索" onClick={() => props.setWebSearch(!props.webSearch)}><Globe2 size={20} /></button>
+          <button className="icon-button ghost" title="入力をひとつ戻す" disabled={!props.canUndoDraft} onClick={props.onUndo}><Undo2 size={20} /></button>
         </div>
         <div className="composer-input-row">
-          <textarea rows={2} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Let's talk!" />
+          <textarea rows={1} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Let's talk!" />
           <button className="voice-mini" disabled={!canRecognizeSpeech()} title="English voice input" onClick={() => props.onMic("en-US")}><Mic size={19} /><span>英</span></button>
           <button className="voice-mini" disabled={!canRecognizeSpeech()} title="Japanese voice input" onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>日</span></button>
           <button className="send-mini primary" title="Send" onClick={props.onSend}><Send size={22} /></button>
@@ -677,7 +747,7 @@ function ChatsTab(props: {
   </div>;
 }
 
-function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages: ChatMessage[]; onReload: () => void }) {
+function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReload: () => void }) {
   const [expression, setExpression] = useState("");
   const [meaning, setMeaning] = useState("");
   const [collection, setCollection] = useState<"vocabulary" | "quickAssist">("vocabulary");
@@ -743,15 +813,13 @@ function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages:
       {!sortedCards.length && <p className="muted">{collection === "quickAssist" ? "Quick Assistで選んだ表現はまだありません。" : "まだカードがありません。会話すると表現がここに貯まります。"}</p>}
       <div className="review-list-wrap">
         <div className="review-list stack" ref={listRef}>
-          {sortedCards.map((card) => <article className="card vocab-card compact-vocab" id={`vocab-card-${card.id}`} key={card.id}>
+          {sortedCards.map((card) => <article className="card vocab-card compact-vocab" data-usage-tier={usageTier(card.usageCount)} id={`vocab-card-${card.id}`} key={card.id}>
             <div className="vocab-main">
               <h3>{card.expression}</h3>
               <p className="muted">{card.meaning || "意味は未設定です。"} <span>{new Date(card.createdAt).toLocaleDateString()}</span></p>
-              <p className="small muted">{card.source === "QuickAssist" ? "Quick Assistで採用" : `${card.source} / 能動使用 ${card.usageCount}回`}</p>
             </div>
             <div className="vocab-actions">
               <button className="icon-button ghost" title="Favorite" onClick={async () => { await setEquivalentVocabFavorite(card, !card.favorite); await props.onReload(); }}><Star size={20} fill={card.favorite ? "currentColor" : "none"} /></button>
-              <button className="icon-button ghost" title="Reviewed" onClick={async () => { await db.vocabCards.update(card.id, { reviewed: true }); await recordDailyStat({ reviewsDone: 1 }); await props.onReload(); }}><Check size={20} /></button>
               <button className="icon-button danger ghost" title="Delete" onClick={async () => { await deleteEquivalentVocabCard(card); await props.onReload(); }}><Trash2 size={20} /></button>
             </div>
           </article>)}
@@ -773,15 +841,15 @@ function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages:
         </div>}
       </div>
     </section>
-    <section className="panel stack">
-      <div className="section-title"><h2>Learning Notes</h2><span className="small">{props.notes.length} notes</span></div>
-      {props.notes.map((note) => <article className="card stack" key={note.id}>
-        <strong>{note.sourceMessage}</strong>
-        <p className="small">{note.coachNotes}</p>
-        <p className="small muted">{note.betterOptions}</p>
-      </article>)}
-    </section>
   </div>;
+}
+
+function usageTier(usageCount: number) {
+  if (usageCount >= 15) return "5";
+  if (usageCount >= 9) return "4";
+  if (usageCount >= 5) return "3";
+  if (usageCount >= 2) return "2";
+  return "1";
 }
 
 function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analyses: ConversationAnalysis[]; canAnalyze: boolean; onAnalyze: () => void; onPractice: (prompt: string) => void }) {
@@ -865,7 +933,7 @@ function SettingsTab(props: {
           <option value="persistent">このブラウザに保存</option>
           <option value="session">このセッションだけ</option>
         </select>
-        <input type="password" autoComplete="off" value={props.apiKeyDraft} onChange={(event) => props.setApiKeyDraft(event.target.value)} placeholder={props.settings.hasApiKey ? "ブラウザに保存済みです。変更する場合だけ新しいキーを入力" : "Gemini API key"} />
+        <input type="password" autoComplete="off" value={props.apiKeyDraft} onChange={(event) => props.setApiKeyDraft(event.target.value)} placeholder={props.settings.hasApiKey ? "ブラウザに保存済み" : "Gemini API key"} />
       </div>
       <div className="row">
         <button className="primary" onClick={props.onSaveApiKey}>保存</button>
@@ -882,6 +950,7 @@ function SettingsTab(props: {
         <label>CEFR<select value={props.settings.englishLevel} onChange={(event) => props.onSettings({ englishLevel: event.target.value as AppSettings["englishLevel"] })}>{["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => <option key={level}>{level}</option>)}</select></label>
         <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option></select></label>
         <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
+        <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
       </div>
       <label>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
       <div className="row">

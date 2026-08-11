@@ -37,6 +37,7 @@ export interface AppSettings {
   theme: ThemeMode;
   voiceMode: VoiceMode;
   voiceGender: VoiceGender;
+  voiceRate: number;
   soundEffectsEnabled: boolean;
   onboardingDone: boolean;
   consentVersion: number;
@@ -158,6 +159,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   voiceMode: "manual",
   voiceGender: "female",
+  voiceRate: 1,
   soundEffectsEnabled: true,
   onboardingDone: false,
   consentVersion: 0,
