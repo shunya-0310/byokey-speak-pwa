@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       injectRegister: "auto",
       includeAssets: ["icons/icon-192.png", "icons/icon-512.png", "images/splash_logo.webp"],
       manifest: {
@@ -41,6 +41,9 @@ export default defineConfig({
         ]
       },
       workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,ico,png,webp,jpg,mp3,json,webmanifest}"],
         runtimeCaching: [
