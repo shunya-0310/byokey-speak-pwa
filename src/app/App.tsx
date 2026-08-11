@@ -10,16 +10,16 @@ import {
   Loader2,
   MessageCircle,
   Mic,
-  Moon,
+  MoreVertical,
   Pause,
   Pin,
   Plus,
+  RefreshCw,
   Send,
   Settings,
   ShieldAlert,
   Sparkles,
   Star,
-  Sun,
   Trash2,
   Undo2,
   Upload,
@@ -59,11 +59,13 @@ import { generateWithGemini, parseAnalysis, parseCoachReply, userMessageForError
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { canRecognizeSpeech, listenOnce, speakCoachText, stopSpeaking } from "../infrastructure/speech";
+import { playAppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
 type Tab = "chats" | "review" | "progress" | "settings";
 type ChatPage = "list" | "conversation";
-type SettingsStatus = { section: "api" | "conversation" | "backup" | "about"; kind: "ok" | "error" | "info"; text: string } | null;
+type SettingsStatus = { section: "api" | "conversation" | "backup" | "about" | "system" | "coach" | "data" | "help"; kind: "ok" | "error" | "info"; text: string } | null;
+type SettingsSection = "system" | "coach" | "backup" | "data" | "help" | "about";
 
 interface AppData {
   settings: AppSettings;
@@ -145,9 +147,27 @@ export default function App() {
     }
   }
 
+  async function refreshNews(manual = false) {
+    if (manual) setBusy("Daily Newsを更新中です");
+    try {
+      const { feed, notice } = await loadDailyNews();
+      setNews({ feed, notice });
+      if (manual) setNotice("Daily Newsを更新しました。");
+    } catch {
+      setNews({ notice: "Daily Newsを読み込めませんでした。" });
+      if (manual) setError("Daily Newsを読み込めませんでした。");
+    } finally {
+      if (manual) setBusy("");
+    }
+  }
+
+  function playSound(sound: Parameters<typeof playAppSound>[0]) {
+    playAppSound(sound, currentData.settings.soundEffectsEnabled);
+  }
+
   useEffect(() => {
     void reload();
-    void loadDailyNews().then(({ feed, notice }) => setNews({ feed, notice })).catch(() => setNews({ notice: "Daily Newsを読み込めませんでした。" }));
+    void refreshNews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -202,6 +222,7 @@ export default function App() {
   }
 
   async function newChat(title = "New chat", origin: Chat["origin"] = "FREE_CHAT", newsContext?: string, opener?: string, sources?: ChatMessage["sources"]) {
+    playSound("decision");
     const chat = createChat(title, origin, newsContext);
     await db.chats.put(chat);
     if (opener) {
@@ -244,6 +265,7 @@ export default function App() {
 
   async function cycleVoiceMode() {
     const next = nextVoiceMode(currentData.settings.voiceMode);
+    playSound("select");
     await updateSettings({ voiceMode: next });
     setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : "Voice Mode: フルオート");
   }
@@ -309,6 +331,7 @@ export default function App() {
     setDraftSource("TYPED");
     setBusy("Geminiが返答中です");
     await db.messages.put(userMessage);
+    playSound("messageSend");
     if (activeChat.title === "New chat") await db.chats.update(activeChat.id, { title: deriveChatTitle(trimmed) });
     await db.chats.update(activeChat.id, { updatedAt: now });
     await recordDailyStat({ turns: 1 });
@@ -332,6 +355,7 @@ export default function App() {
       ].filter(Boolean).join("\n\n");
       const coachMessage: ChatMessage = { id: id("msg"), chatId: activeChat.id, role: "coach", text: coachText, inputSource: "NONE", usedQuickAssist: false, sources: result.sources, createdAt: Date.now() };
       await db.messages.put(coachMessage);
+      playSound("messageReceive");
       for (const item of reply.vocabulary) {
         await saveVocabCard({ expression: item.expression, meaning: item.meaning, source: "Chats", chatId: activeChat.id });
       }
@@ -447,16 +471,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <img src="/images/byokey-lab-logo.webp" alt="" />
-          <div>
-            <h1>BYOKey Speak</h1>
-          </div>
-        </div>
-        <button className="icon-button" title="テーマ切替" onClick={() => updateSettings({ theme: data.settings.theme === "dark" ? "light" : "dark" })}>
-          {data.settings.theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
-        </button>
+      <header className="app-hero" aria-label="BYOKey Speak">
+        <h1>BYOKey Speak</h1>
+        <div className="hero-rule"><span>✦</span></div>
       </header>
       {isPreviewOrigin() && <div className="preview-banner small">プレビュー環境です。個人の本番APIキーを入力しないでください。</div>}
       {(notice || error || busy) && <div className="toast-region" aria-live="polite">
@@ -470,6 +487,7 @@ export default function App() {
           chats={data.chats}
           activeChat={activeChat}
           messages={chatMessages}
+          allMessages={data.messages}
           news={news.feed}
           draft={draft}
           setDraftFromUser={updateDraftFromUser}
@@ -481,6 +499,7 @@ export default function App() {
           speakingMessageId={speakingMessageId}
           onBackToChats={() => setChatPage("list")}
           onNewChat={() => newChat()}
+          onRefreshNews={() => refreshNews(true)}
           onNews={(item) => newChat(item.headline, "DAILY_NEWS", newsHiddenContext(item), newsVisibleOpener(item, data.settings.coachSkills), item.sources)}
           onSelectChat={selectChat}
           onPin={async (chat) => {
@@ -548,6 +567,23 @@ export default function App() {
           setBackupPassphrase={setBackupPassphrase}
           status={settingsStatus}
           onSettings={updateSettings}
+          onDailyNewsNotificationToggle={async (enabled) => {
+            if (enabled && "Notification" in window && Notification.permission === "default") {
+              const permission = await Notification.requestPermission();
+              if (permission !== "granted") {
+                await updateSettings({ dailyNewsNotificationsEnabled: false });
+                showSettingsStatus({ section: "system", kind: "error", text: "通知が許可されませんでした。ブラウザ設定から許可できます。" });
+                return;
+              }
+            }
+            if (enabled && "Notification" in window && Notification.permission === "denied") {
+              await updateSettings({ dailyNewsNotificationsEnabled: false });
+              showSettingsStatus({ section: "system", kind: "error", text: "通知がブロックされています。ブラウザ設定から許可してください。" });
+              return;
+            }
+            await updateSettings({ dailyNewsNotificationsEnabled: enabled });
+            showSettingsStatus({ section: "system", kind: "ok", text: enabled ? "Daily News通知をONにしました。PWAではブラウザの通知許可と起動状態により動作が制限されます。" : "Daily News通知をOFFにしました。" });
+          }}
           onSaveApiKey={async () => {
             if (!apiKeyDraft.trim()) return showSettingsStatus({ section: "api", kind: "error", text: "APIキーを入力してください。" });
             const mode = data.settings.apiKeyMode;
@@ -587,15 +623,15 @@ export default function App() {
             if (!confirm("会話、Vocabulary、進捗、分析を削除しますか。APIキーは残ります。")) return;
             await Promise.all([db.chats.clear(), db.messages.clear(), db.vocabCards.clear(), db.learningNotes.clear(), db.dailyStats.clear(), db.analyses.clear()]);
             await reload();
-            showSettingsStatus({ section: "backup", kind: "info", text: "学習データを削除しました。APIキーは残っています。" });
+            showSettingsStatus({ section: "data", kind: "info", text: "学習データを削除しました。APIキーは残っています。" });
           }}
         />}
       </main>
       <nav className="tabbar" aria-label="Main">
-        <TabButton tab="chats" active={activeTab} setActive={setActiveTab} icon={<MessageCircle size={20} />} label="Chats" />
-        <TabButton tab="review" active={activeTab} setActive={setActiveTab} icon={<BookOpen size={20} />} label="Review" />
-        <TabButton tab="progress" active={activeTab} setActive={setActiveTab} icon={<BarChart3 size={20} />} label="Progress" />
-        <TabButton tab="settings" active={activeTab} setActive={setActiveTab} icon={<Settings size={20} />} label="Settings" />
+        <TabButton tab="chats" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<MessageCircle size={20} />} label="Chats" />
+        <TabButton tab="review" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<BookOpen size={20} />} label="Review" />
+        <TabButton tab="progress" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<BarChart3 size={20} />} label="Progress" />
+        <TabButton tab="settings" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<Settings size={20} />} label="Settings" />
       </nav>
       {assist.open && <AssistModal
         assist={assist}
@@ -650,9 +686,9 @@ function Onboarding(props: { onDone: (consented: boolean) => void }) {
       {page === 2 && <p className="small"><a href={LINKS.googleApiKeyDocs} target="_blank" rel="noreferrer">Google公式のAPIキー資料 <ExternalLink size={14} /></a></p>}
       {page === 4 && <label className="row"><input style={{ width: "auto" }} type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} /> ■リスクと外部送信について理解しました</label>}
       <div className="row">
-        <button className="ghost" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>戻る</button>
+        <button className="ghost" disabled={page === 0} onClick={() => { playAppSound("pages"); setPage((value) => value - 1); }}>戻る</button>
         <button className="ghost" onClick={() => props.onDone(false)}>後で設定する</button>
-        {page < 4 ? <button className="primary" onClick={() => setPage((value) => value + 1)}>次へ</button> : <button className="primary" disabled={!consented} onClick={() => props.onDone(true)}>開始</button>}
+        {page < 4 ? <button className="primary" onClick={() => { playAppSound("pages"); setPage((value) => value + 1); }}>次へ</button> : <button className="primary" disabled={!consented} onClick={() => { playAppSound("decision"); props.onDone(true); }}>開始</button>}
       </div>
     </section>
   </div>;
@@ -662,6 +698,7 @@ function ChatsTab(props: {
   chats: Chat[];
   activeChat?: Chat;
   messages: ChatMessage[];
+  allMessages: ChatMessage[];
   news?: DailyNewsFeed;
   draft: string;
   setDraftFromUser: (value: string) => void;
@@ -673,6 +710,7 @@ function ChatsTab(props: {
   speakingMessageId: string | null;
   onBackToChats: () => void;
   onNewChat: () => void;
+  onRefreshNews: () => void;
   onNews: (item: DailyNewsItem) => void;
   onSelectChat: (chatId: string) => void;
   onPin: (chat: Chat) => void;
@@ -687,6 +725,14 @@ function ChatsTab(props: {
   onStopSpeak: () => void;
   onMic: (language: "en-US" | "ja-JP") => void;
 }) {
+  const newsItems = props.news?.items ?? [];
+  const newsCategories = Array.from(new Map(newsItems.map((item) => [item.category, newsCategoryLabel(item)])).entries());
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(newsCategories[0]?.[0] ?? null);
+  const activeCategory = selectedCategory && newsCategories.some(([category]) => category === selectedCategory)
+    ? selectedCategory
+    : newsCategories[0]?.[0] ?? null;
+  const visibleNews = activeCategory ? newsItems.filter((item) => item.category === activeCategory) : newsItems;
+
   if (props.page === "conversation") {
     return <section className="panel stack chat-page">
       <div className="conversation-title">
@@ -727,24 +773,100 @@ function ChatsTab(props: {
   }
 
   return <div className="stack">
-      <div className="panel stack">
-        <div className="section-title"><h2>Daily News</h2></div>
-        <div className="news-scroll">
-          {props.news?.items.map((item) => <article className="card stack" key={item.id}>
-            <strong>{item.headline}</strong>
-            <button onClick={() => props.onNews(item)}>Talk about</button>
-          </article>) ?? <p className="muted">読み込み中です。</p>}
-        </div>
+      <div className="chats-headline">
+        <h2>✦ Chats</h2>
+        <button className="new-chat-pill" onClick={props.onNewChat}><Plus size={26} /> New Chat</button>
       </div>
-      <div className="panel stack">
-        <div className="section-title"><h2>Chats</h2><button className="icon-button primary" title="New Chat" onClick={props.onNewChat}><Plus size={18} /></button></div>
-        {props.chats.map((chat) => <div className="row nowrap" key={chat.id}>
-          <button className="chat-list-item" onClick={() => props.onSelectChat(chat.id)}>{chat.pinned ? "★ " : ""}{chat.title}<br /><span className="small muted">{chat.origin}</span></button>
-          <button className="icon-button ghost" title="Pin" onClick={() => props.onPin(chat)}><Pin size={16} /></button>
-          <button className="icon-button danger ghost" title="Delete" onClick={() => props.onDelete(chat)}><Trash2 size={16} /></button>
-        </div>)}
+      <section className="daily-news-section stack" aria-label="Daily News">
+        <div className="daily-news-title-row">
+          <div>
+            <h3>TODAY&apos;S WORLD</h3>
+            <p>{props.news?.date ?? new Date().toISOString().slice(0, 10)}</p>
+          </div>
+          <button className="reload-button ghost" onClick={props.onRefreshNews}><RefreshCw size={18} /> Reload</button>
+        </div>
+        {newsCategories.length > 0 && <div className="news-category-row" role="tablist" aria-label="News categories">
+          {newsCategories.map(([category, label]) => <button
+            key={category}
+            className={category === activeCategory ? "primary" : "ghost"}
+            onClick={() => setSelectedCategory(category)}
+          >{label}</button>)}
+        </div>
+        }
+        <p className="news-delivery-note">ニュースは毎朝6時半頃に配信されます。</p>
+        <div className="news-scroll android-news-scroll">
+          {visibleNews.map((item) => <DailyNewsCard item={item} key={item.id} onTalk={() => props.onNews(item)} />)}
+          {!newsItems.length && <p className="muted">読み込み中です。</p>}
+        </div>
+        {visibleNews.length > 1 && <div className="pager-dots" aria-hidden="true">
+          {visibleNews.slice(0, 4).map((item, index) => <span className={index === 0 ? "active" : ""} key={item.id} />)}
+        </div>}
+      </section>
+      <div className="chat-history stack">
+        {props.chats.map((chat) => {
+          const latest = latestChatMessage(chat.id, props.allMessages);
+          return <article className="chat-history-card" key={chat.id}>
+            <button className="chat-list-item" onClick={() => props.onSelectChat(chat.id)}>
+              <strong>{chat.pinned ? "★ " : ""}{chat.title}</strong>
+              <span>{latest ? chatPreview(latest) : chat.origin}</span>
+              <small>{new Date(latest?.createdAt ?? chat.updatedAt).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small>
+            </button>
+            <div className="chat-history-actions">
+              <button className="icon-button ghost" title="Pin" onClick={() => props.onPin(chat)}><Pin size={16} /></button>
+              <button className="icon-button danger ghost" title="Delete" onClick={() => props.onDelete(chat)}><Trash2 size={16} /></button>
+              <MoreVertical size={18} />
+            </div>
+          </article>;
+        })}
       </div>
   </div>;
+}
+
+function DailyNewsCard(props: { item: DailyNewsItem; onTalk: () => void }) {
+  const source = props.item.sources[0];
+  return <article className="daily-news-card">
+    <div className="daily-news-card-main">
+      <div className="source-icon" aria-hidden="true">{sourceIconText(source?.url ?? props.item.headline)}</div>
+      <div>
+        <p className="news-card-category">{newsCategoryLabel(props.item)}</p>
+        <h4>{props.item.headline}</h4>
+      </div>
+    </div>
+    <p className="news-summary">{props.item.summary}</p>
+    <div className="daily-news-actions">
+      {source && <a className="buttonlike source-button" href={source.url} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Source</a>}
+      <button className="primary talk-button" onClick={props.onTalk}><MessageCircle size={18} /> Talk</button>
+    </div>
+  </article>;
+}
+
+function newsCategoryLabel(item: DailyNewsItem) {
+  if (item.categoryLabel) return item.categoryLabel;
+  const labels: Record<string, string> = {
+    politics_economy: "Politics & Economy",
+    technology: "Technology",
+    sports: "Sports",
+    entertainment: "Entertainment"
+  };
+  return labels[item.category] ?? item.category;
+}
+
+function sourceIconText(raw: string) {
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, "");
+    return host[0]?.toUpperCase() ?? "N";
+  } catch {
+    return raw.trim()[0]?.toUpperCase() ?? "N";
+  }
+}
+
+function latestChatMessage(chatId: string, messages: ChatMessage[]) {
+  return messages.filter((message) => message.chatId === chatId).sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
+function chatPreview(message: ChatMessage) {
+  const prefix = message.role === "coach" ? "Natural reply: " : "";
+  return `${prefix}${message.text.replace(/\s+/g, " ").slice(0, 84)}`;
 }
 
 function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReload: () => void }) {
@@ -753,6 +875,7 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   const [collection, setCollection] = useState<"vocabulary" | "quickAssist">("vocabulary");
   const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("alphabet");
   const [showAdd, setShowAdd] = useState(false);
+  const [activeRailLetter, setActiveRailLetter] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const cardsWithUsage = countActiveVocabularyUse(props.messages, props.vocab);
   const collectionCards = cardsWithUsage.filter((card) => collection === "quickAssist" ? card.source === "QuickAssist" : card.source !== "QuickAssist");
@@ -770,9 +893,16 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   }
 
   function scrollToLetter(letter: string) {
+    setSort("alphabet");
+    setActiveRailLetter(letter);
     const target = sortedCards.find((card) => cardLetter(card) >= letter) ?? sortedCards.find((card) => cardLetter(card));
     if (!target) return;
-    document.getElementById(`vocab-card-${target.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    window.requestAnimationFrame(() => {
+      const container = listRef.current;
+      const element = document.getElementById(`vocab-card-${target.id}`);
+      if (!container || !element) return;
+      container.scrollTo({ top: element.offsetTop - container.offsetTop, behavior: "auto" });
+    });
   }
 
   function scrubAlphabet(event: React.PointerEvent<HTMLDivElement>) {
@@ -836,7 +966,10 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
           onPointerMove={(event) => {
             if (event.buttons) scrubAlphabet(event);
           }}
+          onPointerUp={() => setActiveRailLetter(null)}
+          onPointerCancel={() => setActiveRailLetter(null)}
         >
+          {activeRailLetter && <span className="alphabet-bubble">{activeRailLetter}</span>}
           {alphabet.map((letter) => <button className={collectionCards.some((card) => cardLetter(card) === letter) ? "" : "dim"} key={letter} onClick={() => scrollToLetter(letter)}>{letter}</button>)}
         </div>}
       </div>
@@ -915,6 +1048,7 @@ function SettingsTab(props: {
   setBackupPassphrase: (value: string) => void;
   status: SettingsStatus;
   onSettings: (patch: Partial<AppSettings>) => void;
+  onDailyNewsNotificationToggle: (enabled: boolean) => void;
   onSaveApiKey: () => void;
   onClearApiKey: () => void;
   onTestConnection: () => void;
@@ -923,67 +1057,112 @@ function SettingsTab(props: {
   onReplayOnboarding: () => void;
   onClearLearning: () => void;
 }) {
+  const [section, setSection] = useState<SettingsSection>("system");
+  const sections: Array<{ id: SettingsSection; label: string }> = [
+    { id: "system", label: "システム設定" },
+    { id: "coach", label: "レベル、コーチ設定" },
+    { id: "backup", label: "バックアップ／復元" },
+    { id: "data", label: "データ削除" },
+    { id: "help", label: "ヘルプ" },
+    { id: "about", label: "About" }
+  ];
   return <div className="stack">
-    <section className="panel stack">
-      <div className="section-title"><h2><KeyRound size={18} /> Gemini API Key</h2><span className="small">{props.settings.hasApiKey ? "保存済み" : "未設定"}</span></div>
-      <p className="small muted">BYOKey LabはAPIキーを受信、保存、閲覧するためのアプリケーションサーバーやデータベースを持たず、通常利用時に利用者のAPIキーを保存・把握しません。コードはGitHubで公開し、データの保存先、通信先、APIキーの取扱いを確認できるようにしています。</p>
-      <p className="small"><ShieldAlert size={15} /> クライアント側にAPIキーを入力する構成は、Google公式の一般的なセキュリティ推奨とは異なります。理解・納得できる方のみ利用してください。</p>
-      <div className="split">
-        <select value={props.settings.apiKeyMode} onChange={(event) => props.onSettings({ apiKeyMode: event.target.value as AppSettings["apiKeyMode"] })}>
-          <option value="persistent">このブラウザに保存</option>
-          <option value="session">このセッションだけ</option>
-        </select>
-        <input type="password" autoComplete="off" value={props.apiKeyDraft} onChange={(event) => props.setApiKeyDraft(event.target.value)} placeholder={props.settings.hasApiKey ? "ブラウザに保存済み" : "Gemini API key"} />
+    <section className="panel stack settings-panel">
+      <div className="section-title"><h2>Settings</h2></div>
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        {sections.map((item) => <button key={item.id} className={section === item.id ? "primary" : "ghost"} onClick={() => setSection(item.id)}>{item.label}</button>)}
       </div>
-      <div className="row">
-        <button className="primary" onClick={props.onSaveApiKey}>保存</button>
-        <button onClick={props.onTestConnection}>接続テスト</button>
-        <button className="danger ghost" onClick={props.onClearApiKey}>APIキー削除</button>
-        <a href={LINKS.googleAiStudio} target="_blank" rel="noreferrer">Gemini APIキーを取得する <ExternalLink size={14} /></a>
-      </div>
-      <InlineStatus status={props.status} section="api" />
-    </section>
-    <section className="panel stack">
-      <div className="section-title"><h2>Conversation Settings</h2></div>
-      <div className="grid settings-grid">
-        <label>Model<select value={props.settings.model} onChange={(event) => props.onSettings({ model: event.target.value })}>{GEMINI_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
-        <label>CEFR<select value={props.settings.englishLevel} onChange={(event) => props.onSettings({ englishLevel: event.target.value as AppSettings["englishLevel"] })}>{["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => <option key={level}>{level}</option>)}</select></label>
-        <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option></select></label>
-        <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
-        <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
-      </div>
-      <label>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
-      <div className="row">
-        <button onClick={() => props.onSettings({ soundEffectsEnabled: !props.settings.soundEffectsEnabled })}>{props.settings.soundEffectsEnabled ? "効果音 ON" : "効果音 OFF"}</button>
-      </div>
-      <InlineStatus status={props.status} section="conversation" />
-    </section>
-    <section className="panel stack">
-      <div className="section-title"><h2>Backup & Local Data</h2></div>
-      <p className="small muted">暗号化バックアップにはAPIキーを含めません。機種変更や別ブラウザではAPIキーを再入力してください。</p>
-      <input type="password" value={props.backupPassphrase} onChange={(event) => props.setBackupPassphrase(event.target.value)} placeholder="8文字以上のバックアップ用パスフレーズ" />
-      <div className="row">
-        <button onClick={props.onExport}><Download size={15} /> Export</button>
-        <label><span className="buttonlike"><Upload size={15} /> Restore</span><input hidden type="file" accept="application/json" onChange={(event) => props.onRestore(event.target.files?.[0])} /></label>
+      {section === "system" && <div className="stack">
+        <article className="card stack">
+          <div className="section-title"><h3><KeyRound size={18} /> Gemini API Key</h3><span className="small">{props.settings.hasApiKey ? "保存済み" : "未設定"}</span></div>
+          <p className="small muted">BYOKey LabはAPIキーを受信、保存、閲覧するためのアプリケーションサーバーやデータベースを持たず、通常利用時に利用者のAPIキーを保存・把握しません。コードはGitHubで公開し、データの保存先、通信先、APIキーの取扱いを確認できるようにしています。</p>
+          <p className="small"><ShieldAlert size={15} /> クライアント側にAPIキーを入力する構成は、Google公式の一般的なセキュリティ推奨とは異なります。理解・納得できる方のみ利用してください。</p>
+          <div className="split">
+            <select value={props.settings.apiKeyMode} onChange={(event) => props.onSettings({ apiKeyMode: event.target.value as AppSettings["apiKeyMode"] })}>
+              <option value="persistent">このブラウザに保存</option>
+              <option value="session">このセッションだけ</option>
+            </select>
+            <input type="password" autoComplete="off" value={props.apiKeyDraft} onChange={(event) => props.setApiKeyDraft(event.target.value)} placeholder={props.settings.hasApiKey ? "ブラウザに保存済み" : "Gemini API key"} />
+          </div>
+          <div className="row">
+            <button className="primary" onClick={props.onSaveApiKey}>保存</button>
+            <button onClick={props.onTestConnection}>接続テスト</button>
+            <button className="danger ghost" onClick={props.onClearApiKey}>APIキー削除</button>
+            <a href={LINKS.googleAiStudio} target="_blank" rel="noreferrer">Gemini APIキーを取得する <ExternalLink size={14} /></a>
+          </div>
+          <InlineStatus status={props.status} section="api" />
+        </article>
+        <article className="card stack">
+          <div className="section-title"><h3>Daily News通知</h3><label className="switch"><input type="checkbox" checked={props.settings.dailyNewsNotificationsEnabled} onChange={(event) => props.onDailyNewsNotificationToggle(event.target.checked)} /><span /></label></div>
+          <p className="small muted">オンにすると、毎朝6:30頃にDaily Newsの配信をお知らせします。PWAでは端末・ブラウザの通知許可と起動状態により、通知が制限される場合があります。</p>
+          <InlineStatus status={props.status} section="system" />
+        </article>
+        <article className="card stack">
+          <h3>表示と音</h3>
+          <div className="row">
+            <button className={props.settings.theme === "light" ? "primary" : "ghost"} onClick={() => props.onSettings({ theme: "light" })}>Light</button>
+            <button className={props.settings.theme === "dark" ? "primary" : "ghost"} onClick={() => props.onSettings({ theme: "dark" })}>Dark</button>
+            <button onClick={() => props.onSettings({ soundEffectsEnabled: !props.settings.soundEffectsEnabled })}>{props.settings.soundEffectsEnabled ? "効果音 ON" : "効果音 OFF"}</button>
+          </div>
+        </article>
+      </div>}
+      {section === "coach" && <div className="stack">
+        <article className="grid settings-grid">
+          <label>Model<select value={props.settings.model} onChange={(event) => props.onSettings({ model: event.target.value })}>{GEMINI_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
+          <label>CEFR<select value={props.settings.englishLevel} onChange={(event) => props.onSettings({ englishLevel: event.target.value as AppSettings["englishLevel"] })}>{["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => <option key={level}>{level}</option>)}</select></label>
+          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option></select></label>
+          <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
+          <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
+        </article>
+        <article className="card stack cefr-guide">
+          <h3>CEFRレベルの目安</h3>
+          {CEFR_GUIDE.map((item) => <div className="cefr-row" key={item.level}>
+            <strong>{item.level}</strong>
+            <div><p>{item.overview}</p><p className="small muted">{item.output}</p></div>
+          </div>)}
+        </article>
+        <label>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
+        <InlineStatus status={props.status} section="coach" />
+        <InlineStatus status={props.status} section="conversation" />
+      </div>}
+      {section === "backup" && <div className="stack">
+        <p className="small muted">暗号化バックアップにはAPIキーを含めません。機種変更や別ブラウザではAPIキーを再入力してください。</p>
+        <input type="password" value={props.backupPassphrase} onChange={(event) => props.setBackupPassphrase(event.target.value)} placeholder="8文字以上のバックアップ用パスフレーズ" />
+        <div className="row">
+          <button onClick={props.onExport}><Download size={15} /> Export</button>
+          <label><span className="buttonlike"><Upload size={15} /> Restore</span><input hidden type="file" accept="application/json" onChange={(event) => props.onRestore(event.target.files?.[0])} /></label>
+        </div>
+        <InlineStatus status={props.status} section="backup" />
+      </div>}
+      {section === "data" && <div className="stack">
+        <p className="small muted">会話、Vocabulary、進捗、分析を削除します。APIキーと基本設定は残します。</p>
         <button className="danger ghost" onClick={props.onClearLearning}>学習データ削除</button>
-      </div>
-      <InlineStatus status={props.status} section="backup" />
-    </section>
-    <section className="panel stack">
-      <div className="section-title"><h2>Help & About</h2></div>
-      <div className="split">
+        <InlineStatus status={props.status} section="data" />
+      </div>}
+      {section === "help" && <div className="split">
         <InfoLink href={LINKS.apiGuide} label="API設定ガイド" />
         <InfoLink href={LINKS.privacy} label="Privacy Policy" />
         <InfoLink href={LINKS.terms} label="Terms" />
         <InfoLink href={LINKS.support} label="Support" />
+      </div>}
+      {section === "about" && <div className="stack">
         <InfoLink href={LINKS.github} label="GitHub Source" icon={<Github size={15} />} />
-      </div>
-      <p className="small muted">Version {BUILD_INFO.version} / Commit {BUILD_INFO.commitSha} / Build {BUILD_INFO.buildTime}</p>
-      <button onClick={props.onReplayOnboarding}>初回案内を再表示</button>
-      <InlineStatus status={props.status} section="about" />
+        <p className="small muted">Version {BUILD_INFO.version} / Commit {BUILD_INFO.commitSha} / Build {BUILD_INFO.buildTime}</p>
+        <button onClick={props.onReplayOnboarding}>初回案内を再表示</button>
+        <InlineStatus status={props.status} section="about" />
+      </div>}
     </section>
   </div>;
 }
+
+const CEFR_GUIDE: Array<{ level: AppSettings["englishLevel"]; overview: string; output: string }> = [
+  { level: "A1", overview: "学習を始めた段階。身近な単語と短い定型表現を中心に会話します。", output: "1文8語以内を基本に、質問は1つ。難しい語には短い日本語ヒントを付けます。" },
+  { level: "A2", overview: "身近な話題なら、簡単な受け答えを続けられる段階です。", output: "1文12語以内を基本に、接続詞を使った短い文と新しい表現を1つ提示します。" },
+  { level: "B1", overview: "経験・理由・意見を、日常的な英語で説明できる段階です。", output: "1文15語程度で会話し、一般的なイディオムには短い説明を添えます。" },
+  { level: "B2", overview: "幅広い話題で、比較や議論を含む自然な会話ができる段階です。", output: "文法を過度に簡略化せず、ニュアンスや一般的なイディオムも使います。" },
+  { level: "C1", overview: "抽象的な話題でも、目的に合う表現を柔軟に使える段階です。", output: "正確で自然な英語を使い、語調・文体・細かなニュアンスも扱います。" },
+  { level: "C2", overview: "ほぼすべての話題を、細かな意味の違いまで表現できる段階です。", output: "簡略化せず、自然なリズム、含意、文体、イディオムまで含めて応答します。" }
+];
 
 function InlineStatus(props: { status: SettingsStatus; section: NonNullable<SettingsStatus>["section"] }) {
   if (!props.status || props.status.section !== props.section) return null;

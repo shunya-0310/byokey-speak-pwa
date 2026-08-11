@@ -27,7 +27,7 @@ async function checkViewport(contextOptions) {
     const bodyText = await page.locator("body").innerText().catch(() => "");
     const titleVisible = bodyText.includes("BYOKey Speak");
     const onboardingVisible = bodyText.includes("BYOKey Speakへようこそ");
-    const shellVisible = bodyText.includes("New Chatです。") || bodyText.includes("Daily News");
+    const shellVisible = bodyText.includes("New Chatです。") || bodyText.includes("TODAY'S WORLD");
     if (!titleVisible || (!onboardingVisible && !shellVisible)) {
       throw new Error(`Initial app UI was not visible.\nPage errors: ${pageErrors.join(" | ")}\nBody: ${bodyText.slice(0, 500)}`);
     }
@@ -44,7 +44,7 @@ async function checkViewport(contextOptions) {
       }
       await page.getByLabel("■リスクと外部送信について理解しました").check();
       await page.getByRole("button", { name: "開始" }).click();
-      await page.getByText("Daily News").waitFor({ timeout: 10000 });
+      await page.getByText("TODAY'S WORLD").waitFor({ timeout: 10000 });
     }
     await context.close();
   } finally {

@@ -39,6 +39,7 @@ export interface AppSettings {
   voiceGender: VoiceGender;
   voiceRate: number;
   soundEffectsEnabled: boolean;
+  dailyNewsNotificationsEnabled: boolean;
   onboardingDone: boolean;
   consentVersion: number;
   consentAt?: string;
@@ -161,6 +162,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceGender: "female",
   voiceRate: 1,
   soundEffectsEnabled: true,
+  dailyNewsNotificationsEnabled: false,
   onboardingDone: false,
   consentVersion: 0,
   analysisConsentDone: false
