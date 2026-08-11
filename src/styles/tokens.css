@@ -12,6 +12,7 @@
   --bubble-user: #283a55;
   --bubble-system: #24324c;
   --shadow: rgba(3, 7, 13, 0.48);
+  --backsheet: url("/images/backsheet-dark.webp");
 }
 
 :root[data-theme='light'] {
@@ -28,6 +29,7 @@
   --bubble-user: #eadbb4;
   --bubble-system: #e3cf9c;
   --shadow: rgba(80, 49, 17, 0.18);
+  --backsheet: url("/images/backsheet-light.webp");
 }
 
 :root {

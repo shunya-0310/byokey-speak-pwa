@@ -8,6 +8,8 @@ if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(localBrowsers)) {
 }
 
 const { chromium, devices } = await import("@playwright/test");
+const port = Number(process.env.E2E_PORT || 4174);
+const baseUrl = `http://127.0.0.1:${port}/`;
 
 async function checkViewport(contextOptions) {
   const browser = await chromium.launch();
@@ -20,7 +22,7 @@ async function checkViewport(contextOptions) {
       if (message.type() === "error") pageErrors.push(message.text());
     });
     page.setDefaultTimeout(10000);
-    await page.goto("http://127.0.0.1:4174/", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
     await page.waitForFunction(() => document.body.innerText.includes("BYOKey Speakへようこそ") || document.body.innerText.includes("New Chatです。"), null, { timeout: 15000 });
     const bodyText = await page.locator("body").innerText().catch(() => "");
     const titleVisible = bodyText.includes("BYOKey Speak");
@@ -53,7 +55,7 @@ async function checkViewport(contextOptions) {
 const server = await preview({
   preview: {
     host: "127.0.0.1",
-    port: 4174,
+    port,
     strictPort: true
   }
 });

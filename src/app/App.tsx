@@ -24,7 +24,7 @@ import {
   Upload,
   Volume2
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BUILD_INFO, LINKS } from "./links";
 import {
   GEMINI_MODELS,
@@ -623,36 +623,34 @@ function ChatsTab(props: {
 }) {
   if (props.page === "conversation") {
     return <section className="panel stack chat-page">
-      <div className="section-title">
-        <div className="row">
-          <button className="ghost" onClick={props.onBackToChats}>← Chatsへ戻る</button>
-          <h2>{props.activeChat?.title ?? "New chat"}</h2>
-        </div>
-        <div className="row">
-          <label className="row small"><input style={{ width: "auto" }} type="checkbox" checked={props.webSearch} onChange={(event) => props.setWebSearch(event.target.checked)} /> <Search size={15} /> Web検索</label>
-          <button className="icon-button ghost" title="Undo" onClick={props.onUndo}><Undo2 size={17} /></button>
-          <button className="icon-button ghost" title="Stop TTS" onClick={stopSpeaking}><Volume2 size={17} /></button>
-        </div>
+      <div className="conversation-title">
+        <button className="back-button ghost" onClick={props.onBackToChats}>←</button>
+        <h2>{props.activeChat?.title ?? "New chat"}</h2>
       </div>
       <div className="messages focused" aria-live="polite">
         {props.messages.length === 0 && <p className="message system">New Chatです。英語、日本語、混在文で話しかけられます。</p>}
         {props.messages.map((message) => <article className={`message ${message.role}`} key={message.id}>
           <div>{renderTextWithCompactLinks(message.text)}</div>
           {message.sources?.length ? <div className="source-list small">{message.sources.map((source) => <a key={`${source.title}-${source.url}`} href={source.url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {source.title && !source.title.startsWith("http") ? source.title : compactUrl(source.url)}</a>)}</div> : null}
-          {message.role === "coach" && <div className="row">
-            <button className="ghost" onClick={() => props.onSpeak(message)}><Volume2 size={16} /> 読み上げ</button>
-            <button className="ghost" onClick={() => props.onTranslate(message)}>翻訳</button>
-            <button className="ghost" onClick={() => props.onReport(message)}><ShieldAlert size={16} /> 回答を報告</button>
+          {message.role === "coach" && <div className="message-actions">
+            <button className="icon-button ghost" title="読み上げ" onClick={() => props.onSpeak(message)}><Volume2 size={17} /></button>
+            <button className="icon-button ghost" title="翻訳" onClick={() => props.onTranslate(message)}>文</button>
+            <button className="icon-button ghost" title="回答を報告" onClick={() => props.onReport(message)}><ShieldAlert size={17} /></button>
           </div>}
         </article>)}
       </div>
       <div className="composer">
-        <textarea rows={3} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Type in English, Japanese, or both..." />
-        <div className="row">
-          <button onClick={props.onAssist}><Sparkles size={16} /> Quick Assist</button>
-          <button disabled={!canRecognizeSpeech()} onClick={() => props.onMic("en-US")}><Mic size={16} /> EN Mic</button>
-          <button disabled={!canRecognizeSpeech()} onClick={() => props.onMic("ja-JP")}><Mic size={16} /> JA Mic</button>
-          <button className="primary" onClick={props.onSend}><Send size={16} /> Send</button>
+        <div className="composer-actions" aria-label="Conversation tools">
+          <button className="icon-button ghost" title="読み上げ停止" onClick={stopSpeaking}><Volume2 size={20} /></button>
+          <button className="icon-button ghost" title="Quick Assist" onClick={props.onAssist}><Sparkles size={20} /></button>
+          <button className={`icon-button ghost ${props.webSearch ? "active" : ""}`} title="Web検索" onClick={() => props.setWebSearch(!props.webSearch)}><Search size={20} /></button>
+          <button className="icon-button ghost" title="Undo" onClick={props.onUndo}><Undo2 size={20} /></button>
+        </div>
+        <div className="composer-input-row">
+          <textarea rows={2} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Let's talk!" />
+          <button className="voice-mini" disabled={!canRecognizeSpeech()} title="English voice input" onClick={() => props.onMic("en-US")}><Mic size={19} /><span>英</span></button>
+          <button className="voice-mini" disabled={!canRecognizeSpeech()} title="Japanese voice input" onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>日</span></button>
+          <button className="send-mini primary" title="Send" onClick={props.onSend}><Send size={22} /></button>
         </div>
       </div>
     </section>;
@@ -683,7 +681,9 @@ function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages:
   const [expression, setExpression] = useState("");
   const [meaning, setMeaning] = useState("");
   const [collection, setCollection] = useState<"vocabulary" | "quickAssist">("vocabulary");
-  const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("date");
+  const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("alphabet");
+  const [showAdd, setShowAdd] = useState(false);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const cardsWithUsage = countActiveVocabularyUse(props.messages, props.vocab);
   const collectionCards = cardsWithUsage.filter((card) => collection === "quickAssist" ? card.source === "QuickAssist" : card.source !== "QuickAssist");
   const effectiveSort = collection === "quickAssist" && sort === "frequency" ? "date" : sort;
@@ -693,9 +693,26 @@ function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages:
     if (effectiveSort === "favorite") return Number(b.favorite) - Number(a.favorite) || a.expression.localeCompare(b.expression);
     return b.createdAt - a.createdAt;
   }).filter((card) => effectiveSort !== "favorite" || card.favorite);
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-  return <div className="grid two-col">
-    <section className="panel stack">
+  function cardLetter(card: VocabCard) {
+    return (card.expression.trim().match(/[A-Za-z]/)?.[0] ?? "").toUpperCase();
+  }
+
+  function scrollToLetter(letter: string) {
+    const target = sortedCards.find((card) => cardLetter(card) >= letter) ?? sortedCards.find((card) => cardLetter(card));
+    if (!target) return;
+    document.getElementById(`vocab-card-${target.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  function scrubAlphabet(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(0.999, Math.max(0, (event.clientY - rect.top) / rect.height));
+    scrollToLetter(alphabet[Math.floor(ratio * alphabet.length)]);
+  }
+
+  return <div className="grid review-layout">
+    <section className="panel stack review-panel">
       <div className="section-title"><h2>{collection === "quickAssist" ? "Quick Assist" : "Vocabulary List"}</h2><span className="small">{sortedCards.length} cards</span></div>
       <div className="row">
         <button className={collection === "vocabulary" ? "primary" : "ghost"} onClick={() => setCollection("vocabulary")}>Vocabulary</button>
@@ -707,29 +724,54 @@ function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages:
         <button className={effectiveSort === "alphabet" ? "primary" : "ghost"} onClick={() => setSort("alphabet")}>ABC</button>
         {collection === "vocabulary" && <button className={effectiveSort === "frequency" ? "primary" : "ghost"} onClick={() => setSort("frequency")}>頻度</button>}
         <button className={effectiveSort === "favorite" ? "primary" : "ghost"} onClick={() => setSort("favorite")}>★</button>
+        <button className="icon-button ghost add-toggle" title="手動追加" onClick={() => setShowAdd((current) => !current)}><Plus size={19} /></button>
       </div>
-      <div className="split">
-        <input value={expression} onChange={(event) => setExpression(event.target.value)} placeholder="expression" />
-        <input value={meaning} onChange={(event) => setMeaning(event.target.value)} placeholder="meaning" />
-      </div>
-      <button className="primary" onClick={async () => {
-        if (!expression.trim()) return;
-        await saveVocabCard({ expression: expression.trim(), meaning: meaning.trim(), source: "Manual" });
-        setExpression("");
-        setMeaning("");
-        await props.onReload();
-      }}>手動追加</button>
-      {!sortedCards.length && <p className="muted">{collection === "quickAssist" ? "Quick Assistで選んだ表現はまだありません。" : "まだカードがありません。会話すると表現がここに貯まります。"}</p>}
-      {sortedCards.map((card) => <article className="card stack vocab-card" key={card.id}>
-        <div className="section-title"><h3>{card.expression}</h3><span>{card.favorite ? "★" : "☆"}</span></div>
-        <p className="muted">{card.meaning || "意味は未設定です。"}</p>
-        <p className="small muted">{card.source === "QuickAssist" ? "Quick Assistで採用" : `${card.source} / 能動使用 ${card.usageCount}回`}</p>
-        <div className="row">
-          <button className="ghost" onClick={async () => { await setEquivalentVocabFavorite(card, !card.favorite); await props.onReload(); }}><Star size={15} /> Favorite</button>
-          <button className="ghost" onClick={async () => { await db.vocabCards.update(card.id, { reviewed: true }); await recordDailyStat({ reviewsDone: 1 }); await props.onReload(); }}><Check size={15} /> Reviewed</button>
-          <button className="danger ghost" onClick={async () => { await deleteEquivalentVocabCard(card); await props.onReload(); }}><Trash2 size={15} /> Delete</button>
+      {showAdd && <div className="manual-add stack">
+        <div className="split">
+          <input value={expression} onChange={(event) => setExpression(event.target.value)} placeholder="expression" />
+          <input value={meaning} onChange={(event) => setMeaning(event.target.value)} placeholder="meaning" />
         </div>
-      </article>)}
+        <button className="primary" onClick={async () => {
+          if (!expression.trim()) return;
+          await saveVocabCard({ expression: expression.trim(), meaning: meaning.trim(), source: "Manual" });
+          setExpression("");
+          setMeaning("");
+          setShowAdd(false);
+          await props.onReload();
+        }}>手動追加</button>
+      </div>}
+      {!sortedCards.length && <p className="muted">{collection === "quickAssist" ? "Quick Assistで選んだ表現はまだありません。" : "まだカードがありません。会話すると表現がここに貯まります。"}</p>}
+      <div className="review-list-wrap">
+        <div className="review-list stack" ref={listRef}>
+          {sortedCards.map((card) => <article className="card vocab-card compact-vocab" id={`vocab-card-${card.id}`} key={card.id}>
+            <div className="vocab-main">
+              <h3>{card.expression}</h3>
+              <p className="muted">{card.meaning || "意味は未設定です。"} <span>{new Date(card.createdAt).toLocaleDateString()}</span></p>
+              <p className="small muted">{card.source === "QuickAssist" ? "Quick Assistで採用" : `${card.source} / 能動使用 ${card.usageCount}回`}</p>
+            </div>
+            <div className="vocab-actions">
+              <button className="icon-button ghost" title="Favorite" onClick={async () => { await setEquivalentVocabFavorite(card, !card.favorite); await props.onReload(); }}><Star size={20} fill={card.favorite ? "currentColor" : "none"} /></button>
+              <button className="icon-button ghost" title="Reviewed" onClick={async () => { await db.vocabCards.update(card.id, { reviewed: true }); await recordDailyStat({ reviewsDone: 1 }); await props.onReload(); }}><Check size={20} /></button>
+              <button className="icon-button danger ghost" title="Delete" onClick={async () => { await deleteEquivalentVocabCard(card); await props.onReload(); }}><Trash2 size={20} /></button>
+            </div>
+          </article>)}
+        </div>
+        {collection === "vocabulary" && sortedCards.length > 0 && <div
+          className="alphabet-rail"
+          role="slider"
+          aria-label="Alphabet quick scroll"
+          tabIndex={0}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            scrubAlphabet(event);
+          }}
+          onPointerMove={(event) => {
+            if (event.buttons) scrubAlphabet(event);
+          }}
+        >
+          {alphabet.map((letter) => <button className={collectionCards.some((card) => cardLetter(card) === letter) ? "" : "dim"} key={letter} onClick={() => scrollToLetter(letter)}>{letter}</button>)}
+        </div>}
+      </div>
     </section>
     <section className="panel stack">
       <div className="section-title"><h2>Learning Notes</h2><span className="small">{props.notes.length} notes</span></div>
@@ -744,24 +786,36 @@ function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages:
 
 function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analyses: ConversationAnalysis[]; canAnalyze: boolean; onAnalyze: () => void; onPractice: (prompt: string) => void }) {
   const latest = props.analyses[0];
+  const weekLabels = ["木", "金", "土", "日", "月", "火", "水"];
   return <div className="stack">
-    <section className="panel">
+    <section className="panel progress-panel stack">
       <div className="section-title"><h2>Progress</h2></div>
-      <div className="split">
-        <Metric label="Streak" value={`${props.progress.streak}日`} />
-        <Metric label="Turns" value={`${props.progress.userTurns}`} />
-        <Metric label="Vocabulary" value={`${props.progress.savedExpressions}`} />
-        <Metric label="Reviewed" value={`${props.progress.reviewedCount}`} />
-        <Metric label="Quick Assist" value={`${props.progress.assistUses}`} />
-        <Metric label="Avg length" value={`${props.progress.averageUserLength}字`} />
+      <div className="streak-hero">
+        <strong>{props.progress.streak > 0 ? `${props.progress.streak}日` : "今日から始めよう"}</strong>
+        <span>continuous study streak</span>
+      </div>
+      <div className="week-card">
+        <strong>この7日間</strong>
+        <div className="week-row">
+          {weekLabels.map((label, index) => <span className={index === weekLabels.length - 1 && props.progress.streak > 0 ? "active" : ""} key={label}><i />{label}</span>)}
+        </div>
+      </div>
+      <div className="metric-grid">
+        <Metric label="累計学習日" value={`${props.progress.studyDays}日`} />
+        <Metric label="累計ターン" value={`${props.progress.userTurns}`} />
+        <Metric label="単語帳のカード" value={`${props.progress.savedExpressions}`} />
+        <Metric label="お気に入り ★" value={`${props.progress.favoriteCount}`} />
       </div>
     </section>
-    <section className="panel stack">
-      <div className="section-title"><h2>Your English Profile</h2><button className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}>会話を分析</button></div>
+    <section className="panel stack english-profile">
+      <div className="section-title"><h2>✦ Your English Profile</h2><button className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}><Sparkles size={16} /> 会話を分析</button></div>
       {!latest && <p className="muted">20発話以上で分析できます。分析結果はこのブラウザ内へ保存されます。</p>}
       {latest && <>
-        <p className="small muted">{new Date(latest.createdAt).toLocaleString()} / {latest.userMessageCount}発話 / CEFR {latest.result.estimatedCefr}</p>
-        <p>{latest.result.summary}</p>
+        <div className="analysis-card">
+          <div className="section-title"><strong>{new Date(latest.createdAt).toLocaleString()}</strong><strong>CEFR {latest.result.estimatedCefr}</strong></div>
+          <p className="small muted">{latest.userMessageCount}発話 / {latest.model}</p>
+          <p>{latest.result.summary}</p>
+        </div>
         <div className="split">
           <ProfileList title="強み" items={latest.result.strengths.map((item) => item.title || item.comment)} />
           <ProfileList title="次の練習" items={latest.result.nextFocus} />

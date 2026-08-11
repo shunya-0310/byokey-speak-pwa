@@ -41,6 +41,7 @@ export function localProgress(stats: DailyStat[], messages: ChatMessage[], vocab
     userTurns: userMessages.length,
     assistUses: stats.reduce((sum, item) => sum + item.assistUses, 0),
     savedExpressions: vocab.length,
+    favoriteCount: vocab.filter((item) => item.favorite).length,
     reviewedCount: vocab.filter((item) => item.reviewed).length,
     averageUserLength: userMessages.length ? Math.round(userMessages.reduce((sum, item) => sum + item.text.length, 0) / userMessages.length) : 0
   };
