@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveChatTitle, naturalReplyOf, streak } from "./stats";
+import { countExpressionOccurrences, deriveChatTitle, naturalReplyOf, streak } from "./stats";
 
 describe("stats", () => {
   it("calculates streak including yesterday", () => {
@@ -13,5 +13,12 @@ describe("stats", () => {
 
   it("extracts natural reply for TTS", () => {
     expect(naturalReplyOf("Natural reply: Hi!\nCoach notes: None")).toBe("Hi!");
+  });
+
+  it("counts active vocabulary use with word boundaries", () => {
+    expect(countExpressionOccurrences("Quick Assist", [
+      "I use Quick Assist when I need help.",
+      "quick assist is useful. Quick Assistant is a different phrase."
+    ])).toBe(2);
   });
 });

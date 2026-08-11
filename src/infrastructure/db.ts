@@ -9,6 +9,7 @@ import {
   type LearningNote,
   type VocabCard
 } from "../domain/models";
+import { normalizeVocabDisplayExpression, normalizeVocabExpression } from "../domain/stats";
 
 export class ByokeyDb extends Dexie {
   settings!: Table<{ id: "settings"; value: AppSettings }, "settings">;
@@ -81,6 +82,86 @@ export async function recordDailyStat(patch: Partial<Omit<DailyStat, "epochDay">
     notesSaved: current.notesSaved + (patch.notesSaved ?? 0),
     reviewsDone: current.reviewsDone + (patch.reviewsDone ?? 0)
   });
+}
+
+export async function saveVocabCard(input: { expression: string; meaning: string; source: VocabCard["source"]; chatId?: string }) {
+  const expression = normalizeVocabDisplayExpression(input.expression);
+  if (!expression) return;
+  const meaning = input.meaning.trim();
+  const normalized = normalizeVocabExpression(expression);
+  const quickAssist = input.source === "QuickAssist";
+  const cards = await db.vocabCards.toArray();
+  const existing = cards.find((card) => normalizeVocabExpression(card.expression) === normalized && (card.source === "QuickAssist") === quickAssist);
+  if (!existing) {
+    await db.vocabCards.put({
+      id: id("vocab"),
+      expression,
+      meaning,
+      source: input.source,
+      chatId: input.chatId,
+      favorite: false,
+      usageCount: 0,
+      reviewed: false,
+      createdAt: Date.now()
+    });
+    await recordDailyStat({ notesSaved: 1 });
+    return;
+  }
+  const patch: Partial<VocabCard> = {
+    expression,
+    source: existing.source === "QuickAssist" ? "QuickAssist" : input.source,
+    chatId: existing.chatId ?? input.chatId,
+    createdAt: Math.max(existing.createdAt, Date.now())
+  };
+  if (!existing.meaning && meaning) patch.meaning = meaning;
+  await db.vocabCards.update(existing.id, patch);
+}
+
+export function mergeEquivalentVocabCards(cards: VocabCard[]) {
+  const groups = new Map<string, VocabCard[]>();
+  for (const card of cards) {
+    const key = `${card.source === "QuickAssist" ? "assist" : "vocab"}:${normalizeVocabExpression(card.expression)}`;
+    groups.set(key, [...(groups.get(key) ?? []), card]);
+  }
+  return [...groups.values()]
+    .map((group) => {
+      const favorite = group.some((card) => card.favorite);
+      const reviewed = group.some((card) => card.reviewed);
+      const latest = group.reduce((best, card) => card.createdAt > best.createdAt ? card : best, group[0]);
+      const newestMeaning = [...group].sort((a, b) => b.createdAt - a.createdAt).find((card) => card.meaning.trim());
+      const representative = group.reduce((best, card) => {
+        if (card.favorite !== best.favorite) return card.favorite ? card : best;
+        return card.createdAt > best.createdAt ? card : best;
+      }, group[0]);
+      return {
+        ...representative,
+        expression: normalizeVocabDisplayExpression(latest.expression),
+        meaning: newestMeaning?.meaning ?? representative.meaning,
+        source: group.some((card) => card.source === "QuickAssist") ? "QuickAssist" as const : representative.source,
+        favorite,
+        reviewed,
+        createdAt: Math.max(...group.map((card) => card.createdAt))
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function setEquivalentVocabFavorite(card: VocabCard, favorite: boolean) {
+  const normalized = normalizeVocabExpression(card.expression);
+  const quickAssist = card.source === "QuickAssist";
+  const cards = await db.vocabCards.toArray();
+  await Promise.all(cards
+    .filter((candidate) => normalizeVocabExpression(candidate.expression) === normalized && (candidate.source === "QuickAssist") === quickAssist)
+    .map((candidate) => db.vocabCards.update(candidate.id, { favorite })));
+}
+
+export async function deleteEquivalentVocabCard(card: VocabCard) {
+  const normalized = normalizeVocabExpression(card.expression);
+  const quickAssist = card.source === "QuickAssist";
+  const cards = await db.vocabCards.toArray();
+  await db.vocabCards.bulkDelete(cards
+    .filter((candidate) => normalizeVocabExpression(candidate.expression) === normalized && (candidate.source === "QuickAssist") === quickAssist)
+    .map((candidate) => candidate.id));
 }
 
 export async function clearLearningData() {

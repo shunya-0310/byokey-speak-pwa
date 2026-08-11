@@ -5,7 +5,7 @@ export type VoiceGender = "female" | "male";
 export type MessageRole = "user" | "coach" | "system";
 export type MessageInputSource = "TYPED" | "VOICE" | "QUICK_ASSIST" | "MIXED" | "NONE" | "UNKNOWN";
 export type ConversationOrigin = "FREE_CHAT" | "TOPIC" | "DAILY_NEWS" | "MIGRATED_COACH";
-export type VocabSource = "Coach" | "QuickAssist" | "Manual";
+export type VocabSource = "Coach" | "Chats" | "QuickAssist" | "Manual";
 
 export const GEMINI_MODELS = [
   { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", recommended: true },

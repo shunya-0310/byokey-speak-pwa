@@ -37,8 +37,22 @@ import {
   type VocabCard
 } from "../domain/models";
 import { buildAnalysisPrompt, buildConversationPrompt, buildQuickAssistPrompt, buildTranslationPrompt, parseAssistSuggestions } from "../domain/prompts";
-import { deriveChatTitle, localProgress } from "../domain/stats";
-import { createChat, db, ensureFirstChat, exportSnapshot, id, loadSettings, recordDailyStat, restoreSnapshot, saveSettings } from "../infrastructure/db";
+import { countActiveVocabularyUse, deriveChatTitle, localProgress } from "../domain/stats";
+import {
+  createChat,
+  db,
+  deleteEquivalentVocabCard,
+  ensureFirstChat,
+  exportSnapshot,
+  id,
+  loadSettings,
+  mergeEquivalentVocabCards,
+  recordDailyStat,
+  restoreSnapshot,
+  saveSettings,
+  saveVocabCard,
+  setEquivalentVocabFavorite
+} from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
 import { generateWithGemini, parseAnalysis, parseCoachReply, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
@@ -94,6 +108,7 @@ export default function App() {
   const [chatPage, setChatPage] = useState<ChatPage>("list");
   const [activeChatId, setActiveChatId] = useState<string>("");
   const [draft, setDraft] = useState("");
+  const [draftSource, setDraftSource] = useState<ChatMessage["inputSource"]>("TYPED");
   const [webSearch, setWebSearch] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -115,7 +130,7 @@ export default function App() {
       db.dailyStats.toArray(),
       db.analyses.orderBy("createdAt").reverse().toArray()
     ]);
-    setData({ settings, chats, messages, vocab, notes, stats, analyses });
+    setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
     document.documentElement.dataset.theme = settings.theme;
     const hasExistingLocalData = settings.onboardingDone || settings.hasApiKey || chats.length > 0 || messages.length > 0 || vocab.length > 0 || notes.length > 0 || stats.length > 0 || analyses.length > 0;
     setShowOnboarding(!hasExistingLocalData);
@@ -189,11 +204,23 @@ export default function App() {
       await db.messages.put({ id: id("msg"), chatId: chat.id, role: "coach", text: opener, inputSource: "NONE", usedQuickAssist: false, sources, createdAt: Date.now() });
     }
     setDraft("");
+    setDraftSource("TYPED");
     await selectChat(chat.id);
     await reload();
   }
 
-  async function sendMessage(source: ChatMessage["inputSource"] = "TYPED", text = draft) {
+  function updateDraftFromUser(value: string) {
+    setDraft(value);
+    setDraftSource(value.trim() ? mergeInputSource(draftSource, "TYPED") : "TYPED");
+  }
+
+  function appendToDraft(addition: string, source: ChatMessage["inputSource"]) {
+    if (!addition.trim()) return;
+    setDraft((current) => `${current}${current ? " " : ""}${addition.trim()}`);
+    setDraftSource((current) => mergeInputSource(current, source));
+  }
+
+  async function sendMessage(source: ChatMessage["inputSource"] = draftSource, text = draft) {
     const trimmed = text.trim();
     if (!trimmed || !activeChat) return;
     setError("");
@@ -219,6 +246,7 @@ export default function App() {
       createdAt: now
     };
     setDraft("");
+    setDraftSource("TYPED");
     setBusy("Geminiが返答中です");
     await db.messages.put(userMessage);
     if (activeChat.title === "New chat") await db.chats.update(activeChat.id, { title: deriveChatTitle(trimmed) });
@@ -244,12 +272,19 @@ export default function App() {
       ].filter(Boolean).join("\n\n");
       await db.messages.put({ id: id("msg"), chatId: activeChat.id, role: "coach", text: coachText, inputSource: "NONE", usedQuickAssist: false, sources: result.sources, createdAt: Date.now() });
       for (const item of reply.vocabulary) {
-        await db.vocabCards.put({ id: id("vocab"), expression: item.expression, meaning: item.meaning, source: "Coach", chatId: activeChat.id, favorite: false, usageCount: 0, reviewed: false, createdAt: Date.now() });
+        await saveVocabCard({ expression: item.expression, meaning: item.meaning, source: "Chats", chatId: activeChat.id });
       }
       if (reply.coachNote || reply.betterOptions.length) {
         await db.learningNotes.put({ id: id("note"), chatId: activeChat.id, sourceMessage: trimmed, coachNotes: reply.coachNote ?? "", betterOptions: reply.betterOptions.join("\n"), japaneseNote: reply.japaneseExplanation ?? "", reviewed: false, createdAt: Date.now() });
       }
       await reload();
+      if (currentData.settings.voiceMode !== "off") {
+        speakCoachText(coachText, currentData.settings.voiceGender, () => {
+          if (currentData.settings.voiceMode === "fullAuto") {
+            setNotice("Full Auto: ブラウザ制限により、続けるにはEN MicまたはJA Micをもう一度押してください。");
+          }
+        });
+      }
     } catch (caught) {
       const llmError = caught as LlmError;
       setError(llmError.message || userMessageForError("unknown"));
@@ -387,7 +422,7 @@ export default function App() {
           messages={chatMessages}
           news={news.feed}
           draft={draft}
-          setDraft={setDraft}
+          setDraftFromUser={updateDraftFromUser}
           webSearch={webSearch}
           setWebSearch={setWebSearch}
           page={chatPage}
@@ -412,16 +447,21 @@ export default function App() {
           onTranslate={translateMessage}
           onReport={reportMessage}
           onSpeak={(message) => speakCoachText(message.text, data.settings.voiceGender)}
-          onMic={async () => {
+          onMic={async (language) => {
             try {
-              const spoken = await listenOnce("en-US");
-              setDraft((current) => `${current}${current ? " " : ""}${spoken}`);
+              const spoken = await listenOnce(language);
+              const next = `${draft}${draft ? " " : ""}${spoken}`.trim();
+              if (data.settings.voiceMode === "fullAuto") {
+                await sendMessage(mergeInputSource(draftSource, "VOICE"), next);
+              } else {
+                appendToDraft(spoken, "VOICE");
+              }
             } catch (caught) {
               setError((caught as Error).message);
             }
           }}
         />}
-        {activeTab === "review" && <ReviewTab vocab={data.vocab} notes={data.notes} onReload={reload} />}
+        {activeTab === "review" && <ReviewTab vocab={data.vocab} notes={data.notes} messages={data.messages} onReload={reload} />}
         {activeTab === "progress" && <ProgressTab progress={progress} analyses={data.analyses} canAnalyze={canSendToGemini} onAnalyze={async () => {
           const userMessages = data.messages.filter((message) => message.role === "user");
           if (userMessages.length < 20) {
@@ -507,10 +547,18 @@ export default function App() {
         setAssist={setAssist}
         runAssist={runAssist}
         adopt={async (english) => {
-          setDraft((current) => `${current}${current ? " " : ""}${english}`);
-          await db.vocabCards.put({ id: id("vocab"), expression: english, meaning: assist.suggestions.find((item) => item.english === english)?.note ?? "", source: "QuickAssist", chatId: activeChatId, favorite: false, usageCount: 0, reviewed: false, createdAt: Date.now() });
+          appendToDraft(english, "QUICK_ASSIST");
+          await saveVocabCard({ expression: english, meaning: assist.suggestions.find((item) => item.english === english)?.note ?? "", source: "QuickAssist", chatId: activeChatId });
           setAssist({ open: false, stuck: "", suggestions: [] });
           await reload();
+        }}
+        onMic={async () => {
+          try {
+            const spoken = await listenOnce("ja-JP");
+            setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
+          } catch (caught) {
+            setError((caught as Error).message);
+          }
         }}
       />}
     </div>
@@ -519,6 +567,13 @@ export default function App() {
 
 function TabButton(props: { tab: Tab; active: Tab; setActive: (tab: Tab) => void; icon: React.ReactNode; label: string }) {
   return <button aria-current={props.active === props.tab ? "page" : undefined} onClick={() => props.setActive(props.tab)}>{props.icon}<span>{props.label}</span></button>;
+}
+
+function mergeInputSource(current: ChatMessage["inputSource"], next: ChatMessage["inputSource"]): ChatMessage["inputSource"] {
+  if (next === "NONE" || next === "UNKNOWN") return current;
+  if (current === "NONE" || current === "UNKNOWN") return next;
+  if (current === next) return current;
+  return "MIXED";
 }
 
 function Onboarding(props: { onDone: (consented: boolean) => void }) {
@@ -548,7 +603,7 @@ function ChatsTab(props: {
   messages: ChatMessage[];
   news?: DailyNewsFeed;
   draft: string;
-  setDraft: (value: string) => void;
+  setDraftFromUser: (value: string) => void;
   webSearch: boolean;
   setWebSearch: (value: boolean) => void;
   page: ChatPage;
@@ -564,7 +619,7 @@ function ChatsTab(props: {
   onTranslate: (message: ChatMessage) => void;
   onReport: (message: ChatMessage) => void;
   onSpeak: (message: ChatMessage) => void;
-  onMic: () => void;
+  onMic: (language: "en-US" | "ja-JP") => void;
 }) {
   if (props.page === "conversation") {
     return <section className="panel stack chat-page">
@@ -592,10 +647,11 @@ function ChatsTab(props: {
         </article>)}
       </div>
       <div className="composer">
-        <textarea rows={3} value={props.draft} onChange={(event) => props.setDraft(event.target.value)} placeholder="Type in English, Japanese, or both..." />
+        <textarea rows={3} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Type in English, Japanese, or both..." />
         <div className="row">
           <button onClick={props.onAssist}><Sparkles size={16} /> Quick Assist</button>
-          <button disabled={!canRecognizeSpeech()} onClick={props.onMic}><Mic size={16} /> Mic</button>
+          <button disabled={!canRecognizeSpeech()} onClick={() => props.onMic("en-US")}><Mic size={16} /> EN Mic</button>
+          <button disabled={!canRecognizeSpeech()} onClick={() => props.onMic("ja-JP")}><Mic size={16} /> JA Mic</button>
           <button className="primary" onClick={props.onSend}><Send size={16} /> Send</button>
         </div>
       </div>
@@ -623,30 +679,55 @@ function ChatsTab(props: {
   </div>;
 }
 
-function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; onReload: () => void }) {
+function ReviewTab(props: { vocab: VocabCard[]; notes: LearningNote[]; messages: ChatMessage[]; onReload: () => void }) {
   const [expression, setExpression] = useState("");
   const [meaning, setMeaning] = useState("");
+  const [collection, setCollection] = useState<"vocabulary" | "quickAssist">("vocabulary");
+  const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("date");
+  const cardsWithUsage = countActiveVocabularyUse(props.messages, props.vocab);
+  const collectionCards = cardsWithUsage.filter((card) => collection === "quickAssist" ? card.source === "QuickAssist" : card.source !== "QuickAssist");
+  const effectiveSort = collection === "quickAssist" && sort === "frequency" ? "date" : sort;
+  const sortedCards = [...collectionCards].sort((a, b) => {
+    if (effectiveSort === "alphabet") return a.expression.localeCompare(b.expression);
+    if (effectiveSort === "frequency") return b.usageCount - a.usageCount || a.expression.localeCompare(b.expression);
+    if (effectiveSort === "favorite") return Number(b.favorite) - Number(a.favorite) || a.expression.localeCompare(b.expression);
+    return b.createdAt - a.createdAt;
+  }).filter((card) => effectiveSort !== "favorite" || card.favorite);
+
   return <div className="grid two-col">
     <section className="panel stack">
-      <div className="section-title"><h2>Vocabulary List</h2><span className="small">{props.vocab.length} cards</span></div>
+      <div className="section-title"><h2>{collection === "quickAssist" ? "Quick Assist" : "Vocabulary List"}</h2><span className="small">{sortedCards.length} cards</span></div>
+      <div className="row">
+        <button className={collection === "vocabulary" ? "primary" : "ghost"} onClick={() => setCollection("vocabulary")}>Vocabulary</button>
+        <button className={collection === "quickAssist" ? "primary" : "ghost"} onClick={() => setCollection("quickAssist")}>Quick Assist</button>
+      </div>
+      <div className="row">
+        <span className="small muted">並び順</span>
+        <button className={effectiveSort === "date" ? "primary" : "ghost"} onClick={() => setSort("date")}>日付</button>
+        <button className={effectiveSort === "alphabet" ? "primary" : "ghost"} onClick={() => setSort("alphabet")}>ABC</button>
+        {collection === "vocabulary" && <button className={effectiveSort === "frequency" ? "primary" : "ghost"} onClick={() => setSort("frequency")}>頻度</button>}
+        <button className={effectiveSort === "favorite" ? "primary" : "ghost"} onClick={() => setSort("favorite")}>★</button>
+      </div>
       <div className="split">
         <input value={expression} onChange={(event) => setExpression(event.target.value)} placeholder="expression" />
         <input value={meaning} onChange={(event) => setMeaning(event.target.value)} placeholder="meaning" />
       </div>
       <button className="primary" onClick={async () => {
         if (!expression.trim()) return;
-        await db.vocabCards.put({ id: id("vocab"), expression: expression.trim(), meaning: meaning.trim(), source: "Manual", favorite: false, usageCount: 0, reviewed: false, createdAt: Date.now() });
+        await saveVocabCard({ expression: expression.trim(), meaning: meaning.trim(), source: "Manual" });
         setExpression("");
         setMeaning("");
         await props.onReload();
       }}>手動追加</button>
-      {props.vocab.map((card) => <article className="card stack" key={card.id}>
+      {!sortedCards.length && <p className="muted">{collection === "quickAssist" ? "Quick Assistで選んだ表現はまだありません。" : "まだカードがありません。会話すると表現がここに貯まります。"}</p>}
+      {sortedCards.map((card) => <article className="card stack vocab-card" key={card.id}>
         <div className="section-title"><h3>{card.expression}</h3><span>{card.favorite ? "★" : "☆"}</span></div>
         <p className="muted">{card.meaning || "意味は未設定です。"}</p>
+        <p className="small muted">{card.source === "QuickAssist" ? "Quick Assistで採用" : `${card.source} / 能動使用 ${card.usageCount}回`}</p>
         <div className="row">
-          <button className="ghost" onClick={async () => { await db.vocabCards.update(card.id, { favorite: !card.favorite }); await props.onReload(); }}><Star size={15} /> Favorite</button>
+          <button className="ghost" onClick={async () => { await setEquivalentVocabFavorite(card, !card.favorite); await props.onReload(); }}><Star size={15} /> Favorite</button>
           <button className="ghost" onClick={async () => { await db.vocabCards.update(card.id, { reviewed: true }); await recordDailyStat({ reviewsDone: 1 }); await props.onReload(); }}><Check size={15} /> Reviewed</button>
-          <button className="danger ghost" onClick={async () => { await db.vocabCards.delete(card.id); await props.onReload(); }}><Trash2 size={15} /> Delete</button>
+          <button className="danger ghost" onClick={async () => { await deleteEquivalentVocabCard(card); await props.onReload(); }}><Trash2 size={15} /> Delete</button>
         </div>
       </article>)}
     </section>
@@ -823,12 +904,16 @@ function AssistModal(props: {
   setAssist: (value: { open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> }) => void;
   runAssist: () => void;
   adopt: (english: string) => void;
+  onMic: () => void;
 }) {
   return <div className="modal-backdrop">
     <section className="modal stack">
       <div className="section-title"><h2>Quick Assist</h2><button className="icon-button ghost" onClick={() => props.setAssist({ open: false, stuck: "", suggestions: [] })}>×</button></div>
       <textarea rows={3} value={props.assist.stuck} onChange={(event) => props.setAssist({ ...props.assist, stuck: event.target.value })} placeholder="日本語でも英語でも、言いたいことを書いてください。" />
-      <button className="primary" onClick={props.runAssist}><Sparkles size={15} /> 候補を出す</button>
+      <div className="row">
+        <button className="primary" onClick={props.runAssist}><Sparkles size={15} /> 候補を出す</button>
+        <button disabled={!canRecognizeSpeech()} onClick={props.onMic}><Mic size={15} /> 日本語で話す</button>
+      </div>
       {props.assist.suggestions.map((suggestion) => <article className="card stack" key={suggestion.english}>
         <strong>{suggestion.english}</strong>
         <span className="small muted">{suggestion.note}</span>

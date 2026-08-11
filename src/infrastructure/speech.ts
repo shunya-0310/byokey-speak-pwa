@@ -6,6 +6,7 @@ type RecognitionCtor = new () => SpeechRecognition;
 interface SpeechRecognition extends EventTarget {
   lang: string;
   interimResults: boolean;
+  continuous: boolean;
   start(): void;
   stop(): void;
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
@@ -28,6 +29,7 @@ export function listenOnce(lang: "ja-JP" | "en-US") {
     const recognition = new Ctor();
     recognition.lang = lang;
     recognition.interimResults = false;
+    recognition.continuous = false;
     recognition.onresult = (event) => resolve(event.results[0]?.[0]?.transcript ?? "");
     recognition.onerror = () => reject(new Error("音声入力に失敗しました。"));
     recognition.onend = () => undefined;
@@ -35,11 +37,13 @@ export function listenOnce(lang: "ja-JP" | "en-US") {
   });
 }
 
-export function speakCoachText(text: string, gender: VoiceGender) {
+export function speakCoachText(text: string, gender: VoiceGender, onEnd?: () => void) {
   if (!("speechSynthesis" in window)) return false;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(naturalReplyOf(text));
   utterance.lang = "en-US";
+  utterance.onend = () => onEnd?.();
+  utterance.onerror = () => onEnd?.();
   const voices = window.speechSynthesis.getVoices();
   const preferred = voices.find((voice) => voice.lang.startsWith("en") && voice.name.toLowerCase().includes(gender === "female" ? "female" : "male"))
     ?? voices.find((voice) => voice.lang.startsWith("en"));

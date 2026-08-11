@@ -46,10 +46,33 @@ export function localProgress(stats: DailyStat[], messages: ChatMessage[], vocab
   };
 }
 
+export function normalizeVocabExpression(expression: string) {
+  return expression
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+export function normalizeVocabDisplayExpression(expression: string) {
+  return expression.trim().replace(/\s+/g, " ");
+}
+
+export function countExpressionOccurrences(expression: string, messages: string[]) {
+  const target = normalizeVocabDisplayExpression(expression);
+  if (!target) return 0;
+  const wordCharacter = "[\\p{L}\\p{N}']";
+  const pattern = new RegExp(`(?<!${wordCharacter})${escapeRegex(target)}(?!${wordCharacter})`, "giu");
+  return messages.reduce((sum, message) => sum + [...message.matchAll(pattern)].length, 0);
+}
+
 export function countActiveVocabularyUse(messages: ChatMessage[], vocab: VocabCard[]) {
+  const userTexts = messages.filter((message) => message.role === "user").map((message) => message.text);
   return vocab.map((card) => {
-    const needle = card.expression.toLowerCase().trim();
-    const usageCount = messages.filter((message) => message.role === "user" && message.text.toLowerCase().includes(needle)).length;
+    const usageCount = countExpressionOccurrences(card.expression, userTexts);
     return { ...card, usageCount };
   });
+}
+
+function escapeRegex(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
