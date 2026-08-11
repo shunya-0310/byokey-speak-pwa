@@ -9,9 +9,9 @@ export async function persistentStorageStatus() {
 }
 
 export function isPreviewOrigin() {
-  return location.hostname.endsWith(".pages.dev");
+  return location.hostname.endsWith(".pages.dev") && location.hostname !== "byokey-speak-pwa.pages.dev";
 }
 
 export function isTrustedPersistentOrigin() {
-  return ["localhost", "127.0.0.1", "speak.byokey-lab.com"].includes(location.hostname);
+  return ["localhost", "127.0.0.1", "speak.byokey-lab.com", "byokey-speak-pwa.pages.dev"].includes(location.hostname);
 }
