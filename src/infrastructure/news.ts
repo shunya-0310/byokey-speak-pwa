@@ -47,6 +47,6 @@ export function newsVisibleOpener(item: DailyNewsItem, coachSkills: string) {
       : lower.includes("元気") || lower.includes("energetic")
         ? item.coachLeads.energetic
         : item.coachLeads.friendly;
-  const sources = item.sources.map((source) => `${source.title}\n${source.url}`).join("\n");
-  return `${lead}\n\n${item.summary}\n\n${item.question}\n\nSources:\n${sources}`;
+  const sources = item.sources.map((source) => source.title || new URL(source.url).hostname).join(" / ");
+  return `${lead}\n\n${item.summary}\n\n${item.question}\n\nSources: ${sources}`;
 }

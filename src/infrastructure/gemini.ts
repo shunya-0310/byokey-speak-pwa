@@ -42,7 +42,7 @@ export async function generateWithGemini(input: {
   webSearchEnabled?: boolean;
 }) {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
-  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.5-flash-lite";
+  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-lite";
   const body: Record<string, unknown> = {
     contents: [{ parts: [{ text: input.prompt }] }]
   };

@@ -20,14 +20,29 @@ async function checkViewport(contextOptions) {
       if (message.type() === "error") pageErrors.push(message.text());
     });
     page.setDefaultTimeout(10000);
-    await page.goto("http://127.0.0.1:4173/", { waitUntil: "domcontentloaded", timeout: 15000 });
-    await page.waitForFunction(() => document.body.innerText.includes("New Chatです。") || document.body.innerText.includes("Geminiと英語、日本語、混在文で会話できます。"), null, { timeout: 15000 });
+    await page.goto("http://127.0.0.1:4174/", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForFunction(() => document.body.innerText.includes("BYOKey Speakへようこそ") || document.body.innerText.includes("New Chatです。"), null, { timeout: 15000 });
     const bodyText = await page.locator("body").innerText().catch(() => "");
     const titleVisible = bodyText.includes("BYOKey Speak");
-    const onboardingVisible = bodyText.includes("Geminiと英語、日本語、混在文で会話できます。");
-    const shellVisible = bodyText.includes("Gemini-only local-first PWA");
+    const onboardingVisible = bodyText.includes("BYOKey Speakへようこそ");
+    const shellVisible = bodyText.includes("New Chatです。") || bodyText.includes("Daily News");
     if (!titleVisible || (!onboardingVisible && !shellVisible)) {
       throw new Error(`Initial app UI was not visible.\nPage errors: ${pageErrors.join(" | ")}\nBody: ${bodyText.slice(0, 500)}`);
+    }
+    if (onboardingVisible) {
+      const expectedPages = [
+        "BYOKとはBring Your Own Key",
+        "APIキーはGemini API利用権限",
+        "アプリ内のバックアップ機能",
+        "さあ、はじめましょう"
+      ];
+      for (const expectedText of expectedPages) {
+        await page.getByRole("button", { name: "次へ" }).click();
+        await page.getByText(expectedText).waitFor({ timeout: 5000 });
+      }
+      await page.getByLabel("■リスクと外部送信について理解しました").check();
+      await page.getByRole("button", { name: "開始" }).click();
+      await page.getByText("Daily News").waitFor({ timeout: 10000 });
     }
     await context.close();
   } finally {
@@ -38,7 +53,7 @@ async function checkViewport(contextOptions) {
 const server = await preview({
   preview: {
     host: "127.0.0.1",
-    port: 4173,
+    port: 4174,
     strictPort: true
   }
 });

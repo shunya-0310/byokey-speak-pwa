@@ -78,7 +78,6 @@ a {
   inset: 0;
   pointer-events: none;
   background:
-    repeating-linear-gradient(6deg, transparent 0 33px, color-mix(in srgb, var(--ink) 5%, transparent) 34px 35px),
     radial-gradient(circle at 74% 36%, color-mix(in srgb, var(--gold-dark) 10%, transparent), transparent 16rem);
   opacity: 0.7;
 }
@@ -108,19 +107,44 @@ a {
 }
 
 .brand img {
-  width: 38px;
-  height: 38px;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 12px;
+  object-fit: cover;
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.55rem);
+  line-height: 1.1;
 }
 
 .brand p {
   margin: 0.1rem 0 0;
   color: var(--ink-faded);
   font-size: 0.78rem;
+}
+
+.toast-region {
+  position: fixed;
+  z-index: 50;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  left: 50%;
+  width: min(560px, calc(100% - 2rem));
+  transform: translateX(-50%);
+  display: grid;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+
+.toast {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--parchment-light) 96%, #000);
+  box-shadow: 0 14px 36px var(--shadow);
 }
 
 .preview-banner {
@@ -163,7 +187,20 @@ a {
 .section-title h2,
 .section-title h3 {
   margin: 0;
-  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.section-title h2 {
+  font-size: clamp(1.25rem, 2.5vw, 1.55rem);
+}
+
+.section-title h3 {
+  font-size: clamp(1rem, 2vw, 1.18rem);
+}
+
+.panel > h2,
+.card h3 {
+  line-height: 1.25;
 }
 
 .muted {
@@ -171,7 +208,7 @@ a {
 }
 
 .small {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   line-height: 1.55;
 }
 
@@ -187,6 +224,13 @@ a {
 
 .card {
   padding: 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.card strong {
+  font-size: 1.02rem;
+  line-height: 1.35;
 }
 
 .stack {
@@ -286,12 +330,18 @@ a {
   padding: 0.25rem;
 }
 
+.messages.focused {
+  min-height: calc(100dvh - 310px);
+  max-height: none;
+}
+
 .message {
   max-width: min(680px, 92%);
   margin: 0.65rem 0;
   padding: 0.85rem;
   border-radius: 8px;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   line-height: 1.65;
 }
 
@@ -326,10 +376,63 @@ a {
 .topics {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(240px, 1fr);
+  grid-auto-columns: minmax(220px, 1fr);
   gap: 0.75rem;
   overflow-x: auto;
   padding-bottom: 0.3rem;
+}
+
+.news-scroll .card {
+  align-content: space-between;
+  min-height: 132px;
+}
+
+.news-scroll .card strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.chat-page {
+  min-height: calc(100dvh - 148px);
+}
+
+.source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.source-list a,
+.compact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.14rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--gold) 46%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--parchment-light) 72%, var(--gold));
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.inline-status {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--gold) 44%, transparent);
+  background: color-mix(in srgb, var(--parchment-deep) 70%, transparent);
+}
+
+.inline-status.ok {
+  border-color: color-mix(in srgb, var(--moss) 72%, transparent);
+}
+
+.inline-status.error {
+  border-color: var(--coral);
+  color: var(--coral-deep);
 }
 
 .settings-grid {
