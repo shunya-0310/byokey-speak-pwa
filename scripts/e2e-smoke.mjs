@@ -23,7 +23,7 @@ async function checkViewport(contextOptions) {
     });
     page.setDefaultTimeout(10000);
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-    await page.waitForFunction(() => document.body.innerText.includes("BYOKey Speakへようこそ") || document.body.innerText.includes("New Chatです。"), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.body.innerText.includes("BYOKey Speakへようこそ") || document.body.innerText.includes("New Chatです。") || document.body.innerText.includes("TODAY'S WORLD"), null, { timeout: 15000 });
     const bodyText = await page.locator("body").innerText().catch(() => "");
     const titleVisible = bodyText.includes("BYOKey Speak");
     const onboardingVisible = bodyText.includes("BYOKey Speakへようこそ");

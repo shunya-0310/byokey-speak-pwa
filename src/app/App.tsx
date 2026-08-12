@@ -66,6 +66,12 @@ type Tab = "chats" | "review" | "progress" | "settings";
 type ChatPage = "list" | "conversation";
 type SettingsStatus = { section: "api" | "conversation" | "backup" | "about" | "system" | "coach" | "data" | "help"; kind: "ok" | "error" | "info"; text: string } | null;
 type SettingsSection = "system" | "coach" | "backup" | "data" | "help" | "about";
+type SplashMode = "initial" | "postOnboarding" | null;
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+}
 
 interface AppData {
   settings: AppSettings;
@@ -124,6 +130,9 @@ export default function App() {
   const [backupPassphrase, setBackupPassphrase] = useState("");
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [settingsStatus, setSettingsStatus] = useState<SettingsStatus>(null);
+  const [splashMode, setSplashMode] = useState<SplashMode>("initial");
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installBannerDismissed, setInstallBannerDismissed] = useState(() => localStorage.getItem("byokey-install-banner-dismissed") === "1");
 
   async function reload() {
     const [settings, chats, messages, vocab, notes, stats, analyses] = await Promise.all([
@@ -189,8 +198,20 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [error]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+      setInstallBannerDismissed(false);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
   if (!data) {
-    return <div className="app"><main className="main"><div className="panel row"><Loader2 className="spin" /> Loading BYOKey Speak...</div></main></div>;
+    return <div className="app">
+      {splashMode ? <SplashOverlay onFinished={() => setSplashMode(null)} /> : <main className="main"><div className="panel row"><Loader2 className="spin" /> Loading BYOKey Speak...</div></main>}
+    </div>;
   }
 
   const currentData = data;
@@ -198,6 +219,18 @@ export default function App() {
   const chatMessages = currentData.messages.filter((message) => message.chatId === activeChatId);
   const progress = localProgress(currentData.stats, currentData.messages, currentData.vocab);
   const canSendToGemini = currentData.settings.consentVersion >= 1 && currentData.settings.hasApiKey;
+  const showInstallBanner = !installBannerDismissed && !isStandaloneDisplay();
+
+  if (splashMode === "initial") {
+    return <div className="app"><SplashOverlay onFinished={() => setSplashMode(null)} /></div>;
+  }
+
+  function handleGlobalInteractionSound(event: React.MouseEvent<HTMLDivElement>) {
+    const target = event.target instanceof Element ? event.target : null;
+    const control = target?.closest("button,a,.buttonlike");
+    if (!control || control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true") return;
+    playAppSound((control as HTMLElement).dataset.sound as Parameters<typeof playAppSound>[0] || "select", currentData.settings.soundEffectsEnabled);
+  }
 
   function showSettingsStatus(status: NonNullable<SettingsStatus>) {
     setSettingsStatus(status);
@@ -466,15 +499,33 @@ export default function App() {
     return <Onboarding onDone={async (consented) => {
       await updateSettings({ onboardingDone: true, consentVersion: consented ? 1 : 0, consentAt: consented ? new Date().toISOString() : undefined });
       setShowOnboarding(false);
+      setSplashMode("postOnboarding");
     }} />;
   }
 
   return (
-    <div className="app">
+    <div className="app" onClickCapture={handleGlobalInteractionSound}>
+      {splashMode && <SplashOverlay onFinished={() => setSplashMode(null)} />}
       <header className="app-hero" aria-label="BYOKey Speak">
         <h1>BYOKey Speak</h1>
         <div className="hero-rule"><span>✦</span></div>
       </header>
+      {showInstallBanner && <section className="install-banner" aria-live="polite">
+        <div>
+          <strong>ホーム画面にインストール</strong>
+          <p>BYOKey Speakはインストールして使うと、アプリ版に近い表示で起動できます。</p>
+        </div>
+        <div className="row nowrap">
+          {installPrompt
+            ? <button className="primary" onClick={async () => {
+                await installPrompt.prompt();
+                const choice = await installPrompt.userChoice;
+                if (choice.outcome === "accepted") setInstallPrompt(null);
+              }}>インストール</button>
+            : <span className="small muted">ブラウザメニューから「ホーム画面に追加」を選んでください。</span>}
+          <button className="icon-button ghost" title="閉じる" onClick={() => { localStorage.setItem("byokey-install-banner-dismissed", "1"); setInstallBannerDismissed(true); }}>×</button>
+        </div>
+      </section>}
       {isPreviewOrigin() && <div className="preview-banner small">プレビュー環境です。個人の本番APIキーを入力しないでください。</div>}
       {(notice || error || busy) && <div className="toast-region" aria-live="polite">
         {notice && <p className="toast small">{notice}</p>}
@@ -628,10 +679,10 @@ export default function App() {
         />}
       </main>
       <nav className="tabbar" aria-label="Main">
-        <TabButton tab="chats" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<MessageCircle size={20} />} label="Chats" />
-        <TabButton tab="review" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<BookOpen size={20} />} label="Review" />
-        <TabButton tab="progress" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<BarChart3 size={20} />} label="Progress" />
-        <TabButton tab="settings" active={activeTab} setActive={(tab) => { playSound("select"); setActiveTab(tab); }} icon={<Settings size={20} />} label="Settings" />
+        <TabButton tab="chats" active={activeTab} setActive={setActiveTab} icon={<MessageCircle size={20} />} label="Chats" />
+        <TabButton tab="review" active={activeTab} setActive={setActiveTab} icon={<BookOpen size={20} />} label="Review" />
+        <TabButton tab="progress" active={activeTab} setActive={setActiveTab} icon={<BarChart3 size={20} />} label="Progress" />
+        <TabButton tab="settings" active={activeTab} setActive={setActiveTab} icon={<Settings size={20} />} label="Settings" />
       </nav>
       {assist.open && <AssistModal
         assist={assist}
@@ -658,6 +709,25 @@ export default function App() {
 
 function TabButton(props: { tab: Tab; active: Tab; setActive: (tab: Tab) => void; icon: React.ReactNode; label: string }) {
   return <button aria-current={props.active === props.tab ? "page" : undefined} onClick={() => props.setActive(props.tab)}>{props.icon}<span>{props.label}</span></button>;
+}
+
+function SplashOverlay(props: { onFinished: () => void }) {
+  useEffect(() => {
+    const timer = window.setTimeout(props.onFinished, 1000);
+    return () => window.clearTimeout(timer);
+  }, [props.onFinished]);
+  return <div className="splash-overlay" aria-label="BYOKey Speak loading">
+    <div className="splash-logo-wrap">
+      <img src="/images/splash_logo.webp" alt="" />
+      <span className="splash-light splash-light-a" />
+      <span className="splash-light splash-light-b" />
+      <span className="splash-flash" />
+    </div>
+  </div>;
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia("(display-mode: standalone)").matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
 function mergeInputSource(current: ChatMessage["inputSource"], next: ChatMessage["inputSource"]): ChatMessage["inputSource"] {
@@ -728,10 +798,32 @@ function ChatsTab(props: {
   const newsItems = props.news?.items ?? [];
   const newsCategories = Array.from(new Map(newsItems.map((item) => [item.category, newsCategoryLabel(item)])).entries());
   const [selectedCategory, setSelectedCategory] = useState<string | null>(newsCategories[0]?.[0] ?? null);
+  const [newsPage, setNewsPage] = useState(0);
+  const newsCarouselRef = useRef<HTMLDivElement | null>(null);
   const activeCategory = selectedCategory && newsCategories.some(([category]) => category === selectedCategory)
     ? selectedCategory
-    : newsCategories[0]?.[0] ?? null;
-  const visibleNews = activeCategory ? newsItems.filter((item) => item.category === activeCategory) : newsItems;
+    : newsItems[newsPage]?.category ?? newsCategories[0]?.[0] ?? null;
+  const visibleNews = newsItems;
+
+  function scrollNewsToPage(index: number, behavior: ScrollBehavior = "smooth") {
+    const carousel = newsCarouselRef.current;
+    const card = carousel?.querySelector<HTMLElement>(".daily-news-card");
+    if (!carousel || !card) return;
+    const gap = parseFloat(getComputedStyle(carousel).columnGap || "0");
+    carousel.scrollTo({ left: index * (card.offsetWidth + gap), behavior });
+  }
+
+  function updateNewsPageFromScroll() {
+    const carousel = newsCarouselRef.current;
+    if (!carousel) return;
+    const card = carousel.querySelector<HTMLElement>(".daily-news-card");
+    if (!card) return;
+    const gap = parseFloat(getComputedStyle(carousel).columnGap || "0");
+    const pageWidth = card.offsetWidth + gap;
+    const nextPage = Math.max(0, Math.min(newsItems.length - 1, Math.round(carousel.scrollLeft / Math.max(1, pageWidth))));
+    setNewsPage(nextPage);
+    if (newsItems[nextPage]) setSelectedCategory(newsItems[nextPage].category);
+  }
 
   if (props.page === "conversation") {
     return <section className="panel stack chat-page">
@@ -789,17 +881,26 @@ function ChatsTab(props: {
           {newsCategories.map(([category, label]) => <button
             key={category}
             className={category === activeCategory ? "primary" : "ghost"}
-            onClick={() => setSelectedCategory(category)}
+            onClick={() => {
+              const nextPage = Math.max(0, newsItems.findIndex((item) => item.category === category));
+              setSelectedCategory(category);
+              setNewsPage(nextPage);
+              window.requestAnimationFrame(() => scrollNewsToPage(nextPage));
+            }}
           >{label}</button>)}
         </div>
         }
         <p className="news-delivery-note">ニュースは毎朝6時半頃に配信されます。</p>
-        <div className="news-scroll android-news-scroll">
+        <div className="news-scroll android-news-scroll" ref={newsCarouselRef} onScroll={updateNewsPageFromScroll}>
           {visibleNews.map((item) => <DailyNewsCard item={item} key={item.id} onTalk={() => props.onNews(item)} />)}
           {!newsItems.length && <p className="muted">読み込み中です。</p>}
         </div>
         {visibleNews.length > 1 && <div className="pager-dots" aria-hidden="true">
-          {visibleNews.slice(0, 4).map((item, index) => <span className={index === 0 ? "active" : ""} key={item.id} />)}
+          {visibleNews.map((item, index) => <button className={index === newsPage ? "active" : ""} key={item.id} onClick={() => {
+            setNewsPage(index);
+            setSelectedCategory(item.category);
+            scrollNewsToPage(index);
+          }} aria-label={`News ${index + 1}`} />)}
         </div>}
       </section>
       <div className="chat-history stack">
@@ -875,7 +976,7 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   const [collection, setCollection] = useState<"vocabulary" | "quickAssist">("vocabulary");
   const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("alphabet");
   const [showAdd, setShowAdd] = useState(false);
-  const [activeRailLetter, setActiveRailLetter] = useState<string | null>(null);
+  const [activeRail, setActiveRail] = useState<{ letter: string; y: number } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const cardsWithUsage = countActiveVocabularyUse(props.messages, props.vocab);
   const collectionCards = cardsWithUsage.filter((card) => collection === "quickAssist" ? card.source === "QuickAssist" : card.source !== "QuickAssist");
@@ -892,23 +993,25 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
     return (card.expression.trim().match(/[A-Za-z]/)?.[0] ?? "").toUpperCase();
   }
 
-  function scrollToLetter(letter: string) {
+  function scrollToLetter(letter: string, behavior: ScrollBehavior = "auto") {
     setSort("alphabet");
-    setActiveRailLetter(letter);
     const target = sortedCards.find((card) => cardLetter(card) >= letter) ?? sortedCards.find((card) => cardLetter(card));
     if (!target) return;
     window.requestAnimationFrame(() => {
       const container = listRef.current;
       const element = document.getElementById(`vocab-card-${target.id}`);
       if (!container || !element) return;
-      container.scrollTo({ top: element.offsetTop - container.offsetTop, behavior: "auto" });
+      container.scrollTo({ top: element.offsetTop - container.offsetTop, behavior });
     });
   }
 
   function scrubAlphabet(event: React.PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.min(0.999, Math.max(0, (event.clientY - rect.top) / rect.height));
-    scrollToLetter(alphabet[Math.floor(ratio * alphabet.length)]);
+    const y = Math.min(rect.height, Math.max(0, event.clientY - rect.top));
+    const ratio = Math.min(0.999, Math.max(0, y / rect.height));
+    const letter = alphabet[Math.floor(ratio * alphabet.length)];
+    setActiveRail({ letter, y });
+    scrollToLetter(letter);
   }
 
   return <div className="grid review-layout">
@@ -966,11 +1069,11 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
           onPointerMove={(event) => {
             if (event.buttons) scrubAlphabet(event);
           }}
-          onPointerUp={() => setActiveRailLetter(null)}
-          onPointerCancel={() => setActiveRailLetter(null)}
+          onPointerUp={() => setActiveRail(null)}
+          onPointerCancel={() => setActiveRail(null)}
         >
-          {activeRailLetter && <span className="alphabet-bubble">{activeRailLetter}</span>}
-          {alphabet.map((letter) => <button className={collectionCards.some((card) => cardLetter(card) === letter) ? "" : "dim"} key={letter} onClick={() => scrollToLetter(letter)}>{letter}</button>)}
+          {activeRail && <span className="alphabet-bubble" style={{ top: activeRail.y }}>{activeRail.letter}</span>}
+          {alphabet.map((letter) => <button className={collectionCards.some((card) => cardLetter(card) === letter) ? "" : "dim"} key={letter} onClick={() => scrollToLetter(letter, "smooth")}>{letter}</button>)}
         </div>}
       </div>
     </section>
@@ -1009,7 +1112,7 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analys
       </div>
     </section>
     <section className="panel stack english-profile">
-      <div className="section-title"><h2>✦ Your English Profile</h2><button className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}><Sparkles size={16} /> 会話を分析</button></div>
+      <div className="section-title english-profile-title"><h2>✦ Your English Profile</h2><button className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}><Sparkles size={16} /> 会話を分析</button></div>
       {!latest && <p className="muted">20発話以上で分析できます。分析結果はこのブラウザ内へ保存されます。</p>}
       {latest && <>
         <div className="analysis-card">
@@ -1058,6 +1161,7 @@ function SettingsTab(props: {
   onClearLearning: () => void;
 }) {
   const [section, setSection] = useState<SettingsSection>("system");
+  const selectedCefrGuide = CEFR_GUIDE.find((item) => item.level === props.settings.englishLevel) ?? CEFR_GUIDE[0];
   const sections: Array<{ id: SettingsSection; label: string }> = [
     { id: "system", label: "システム設定" },
     { id: "coach", label: "レベル、コーチ設定" },
@@ -1077,6 +1181,7 @@ function SettingsTab(props: {
           <div className="section-title"><h3><KeyRound size={18} /> Gemini API Key</h3><span className="small">{props.settings.hasApiKey ? "保存済み" : "未設定"}</span></div>
           <p className="small muted">BYOKey LabはAPIキーを受信、保存、閲覧するためのアプリケーションサーバーやデータベースを持たず、通常利用時に利用者のAPIキーを保存・把握しません。コードはGitHubで公開し、データの保存先、通信先、APIキーの取扱いを確認できるようにしています。</p>
           <p className="small"><ShieldAlert size={15} /> クライアント側にAPIキーを入力する構成は、Google公式の一般的なセキュリティ推奨とは異なります。理解・納得できる方のみ利用してください。</p>
+          <label>Model<select value={props.settings.model} onChange={(event) => props.onSettings({ model: event.target.value })}>{GEMINI_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
           <div className="split">
             <select value={props.settings.apiKeyMode} onChange={(event) => props.onSettings({ apiKeyMode: event.target.value as AppSettings["apiKeyMode"] })}>
               <option value="persistent">このブラウザに保存</option>
@@ -1104,22 +1209,28 @@ function SettingsTab(props: {
             <button className={props.settings.theme === "dark" ? "primary" : "ghost"} onClick={() => props.onSettings({ theme: "dark" })}>Dark</button>
             <button onClick={() => props.onSettings({ soundEffectsEnabled: !props.settings.soundEffectsEnabled })}>{props.settings.soundEffectsEnabled ? "効果音 ON" : "効果音 OFF"}</button>
           </div>
+          <p className="small muted">効果音はブラウザのメディア音量に従います。端末やOSによってはマナーモード検知に制限があります。</p>
         </article>
       </div>}
       {section === "coach" && <div className="stack">
         <article className="grid settings-grid">
-          <label>Model<select value={props.settings.model} onChange={(event) => props.onSettings({ model: event.target.value })}>{GEMINI_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
-          <label>CEFR<select value={props.settings.englishLevel} onChange={(event) => props.onSettings({ englishLevel: event.target.value as AppSettings["englishLevel"] })}>{["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => <option key={level}>{level}</option>)}</select></label>
           <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option></select></label>
           <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
           <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
         </article>
         <article className="card stack cefr-guide">
           <h3>CEFRレベルの目安</h3>
-          {CEFR_GUIDE.map((item) => <div className="cefr-row" key={item.level}>
-            <strong>{item.level}</strong>
-            <div><p>{item.overview}</p><p className="small muted">{item.output}</p></div>
-          </div>)}
+          <div className="cefr-chip-row" role="listbox" aria-label="CEFR level">
+            {CEFR_GUIDE.map((item) => <button
+              key={item.level}
+              className={props.settings.englishLevel === item.level ? "primary" : "ghost"}
+              onClick={() => props.onSettings({ englishLevel: item.level })}
+            >{item.level}</button>)}
+          </div>
+          <div className="cefr-selected-card">
+            <strong>{selectedCefrGuide.level}</strong>
+            <div><p>{selectedCefrGuide.overview}</p><p className="small muted">出力の目安：{selectedCefrGuide.output}</p></div>
+          </div>
         </article>
         <label>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
         <InlineStatus status={props.status} section="coach" />

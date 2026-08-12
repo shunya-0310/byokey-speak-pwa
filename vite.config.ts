@@ -19,7 +19,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: null,
       includeAssets: ["icons/icon-192.png", "icons/icon-512.png", "images/splash_logo.webp"],
       manifest: {
         name: "BYOKey Speak",
