@@ -171,7 +171,15 @@ export default function App() {
     ]);
     setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
     document.documentElement.dataset.theme = settings.theme;
-    const hasExistingLocalData = settings.onboardingDone || settings.hasApiKey || chats.length > 0 || messages.length > 0 || vocab.length > 0 || notes.length > 0 || stats.length > 0 || analyses.length > 0;
+    const hasUserCreatedChatData = chats.some((chat) => chat.origin !== "FREE_CHAT" || chat.title !== "New chat" || Boolean(chat.newsContext));
+    const hasExistingLocalData = settings.onboardingDone
+      || settings.hasApiKey
+      || messages.length > 0
+      || vocab.length > 0
+      || notes.length > 0
+      || stats.length > 0
+      || analyses.length > 0
+      || hasUserCreatedChatData;
     setShowOnboarding(!hasExistingLocalData);
     if (!activeChatId) {
       const selected = settings.lastOpenedChatId && chats.some((chat) => chat.id === settings.lastOpenedChatId)

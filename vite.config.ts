@@ -20,7 +20,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: null,
-      includeAssets: ["images/splash_logo.webp"],
+      includeAssets: ["icons/app-icon-192.png", "icons/app-icon-512.png", "images/splash_logo.webp"],
       manifest: {
         name: "BYOKey Speak",
         short_name: "BYOKey Speak",
@@ -30,6 +30,10 @@ export default defineConfig({
         display: "standalone",
         start_url: "/",
         scope: "/",
+        icons: [
+          { src: "/icons/app-icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: "/icons/app-icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+        ],
         shortcuts: [
           { name: "New Chat", short_name: "New Chat", url: "/?action=new-chat" },
           { name: "Settings", short_name: "Settings", url: "/?tab=settings" }
