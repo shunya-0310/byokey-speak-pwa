@@ -14,7 +14,6 @@ import {
   Pause,
   Pin,
   Plus,
-  RefreshCw,
   Send,
   Settings,
   ShieldAlert,
@@ -59,7 +58,7 @@ import { generateWithGemini, parseAnalysis, parseCoachReply, userMessageForError
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { canRecognizeSpeech, listenOnce, speakCoachText, stopSpeaking } from "../infrastructure/speech";
-import { playAppSound } from "../infrastructure/sound";
+import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
 type Tab = "chats" | "review" | "progress" | "settings";
@@ -101,7 +100,7 @@ const ONBOARDING = [
   },
   {
     title: "データの保存について",
-    body: "あなたのAPIキー、会話履歴、単語メモ、学習の進み具合は、この端末のブラウザ内に保存されます。BYOKey Labのサーバーへ送られるものではありません。ただし、ブラウザのデータを削除したり、別の端末へ移ったりすると、保存した内容をそのまま使えなくなることがあります。大切な学習データは、アプリ内のバックアップ機能で書き出し、必要なときに復元できます。バックアップにはAPIキーを含めないため、APIキーだけは新しい端末やブラウザで再入力してください。",
+    body: "あなたのAPIキー、会話履歴、単語メモ、学習の進み具合は、この端末のブラウザ内に保存されます。BYOKey Labのサーバーへ送られるものではありません。ただし、アプリをアンインストールしたり、ブラウザのキャッシュやサイトデータを削除したり、別の端末へ移ったりすると、保存した内容をそのまま使えなくなることがあります。大切な学習データは、アプリ内のバックアップ機能で書き出し、必要なときに復元できます。バックアップにはAPIキーを含めないため、APIキーだけは新しい端末やブラウザで再入力してください。",
     image: "/images/onboarding/onboarding_bg_4.jpg"
   },
   {
@@ -187,6 +186,11 @@ export default function App() {
   }, [data?.settings.theme]);
 
   useEffect(() => {
+    if (!data?.settings.soundEffectsEnabled) return;
+    primeAppSounds(true);
+  }, [data?.settings.soundEffectsEnabled]);
+
+  useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 2000);
     return () => window.clearTimeout(timer);
@@ -225,11 +229,14 @@ export default function App() {
     return <div className="app"><SplashOverlay onFinished={() => setSplashMode(null)} /></div>;
   }
 
-  function handleGlobalInteractionSound(event: React.MouseEvent<HTMLDivElement>) {
+  function handleGlobalInteractionSound(event: React.PointerEvent<HTMLDivElement>) {
     const target = event.target instanceof Element ? event.target : null;
     const control = target?.closest("button,a,.buttonlike");
     if (!control || control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true") return;
-    playAppSound((control as HTMLElement).dataset.sound as Parameters<typeof playAppSound>[0] || "select", currentData.settings.soundEffectsEnabled);
+    primeAppSounds(currentData.settings.soundEffectsEnabled);
+    const sound = (control as HTMLElement).dataset.sound;
+    if (sound === "none") return;
+    playAppSound((sound as AppSound) || "select", currentData.settings.soundEffectsEnabled);
   }
 
   function showSettingsStatus(status: NonNullable<SettingsStatus>) {
@@ -504,7 +511,7 @@ export default function App() {
   }
 
   return (
-    <div className="app" onClickCapture={handleGlobalInteractionSound}>
+    <div className="app" onPointerDownCapture={handleGlobalInteractionSound}>
       {splashMode && <SplashOverlay onFinished={() => setSplashMode(null)} />}
       <header className="app-hero" aria-label="BYOKey Speak">
         <h1>BYOKey Speak</h1>
@@ -550,7 +557,6 @@ export default function App() {
           speakingMessageId={speakingMessageId}
           onBackToChats={() => setChatPage("list")}
           onNewChat={() => newChat()}
-          onRefreshNews={() => refreshNews(true)}
           onNews={(item) => newChat(item.headline, "DAILY_NEWS", newsHiddenContext(item), newsVisibleOpener(item, data.settings.coachSkills), item.sources)}
           onSelectChat={selectChat}
           onPin={async (chat) => {
@@ -718,7 +724,6 @@ function SplashOverlay(props: { onFinished: () => void }) {
   }, [props.onFinished]);
   return <div className="splash-overlay" aria-label="BYOKey Speak loading">
     <div className="splash-logo-wrap">
-      <img src="/images/splash_logo.webp" alt="" />
       <span className="splash-light splash-light-a" />
       <span className="splash-light splash-light-b" />
       <span className="splash-flash" />
@@ -747,14 +752,14 @@ function Onboarding(props: { onDone: (consented: boolean) => void }) {
   const [page, setPage] = useState(0);
   const [consented, setConsented] = useState(false);
   const current = ONBOARDING[page];
-  return <div className="onboarding" style={{ backgroundImage: `url(${current.image})` }}>
+  return <div className="onboarding" style={{ backgroundImage: `url(${current.image})` }} onPointerDownCapture={() => primeAppSounds()}>
     <section className="onboarding-card">
       <p className="muted">Page {page + 1} / 5</p>
       <h1>{current.title}</h1>
       <p>{current.body}</p>
       {page === 1 && <p className="small"><a href={LINKS.officialSite} target="_blank" rel="noreferrer">BYOKey Lab公式サイト <ExternalLink size={14} /></a></p>}
       {page === 2 && <p className="small"><a href={LINKS.googleApiKeyDocs} target="_blank" rel="noreferrer">Google公式のAPIキー資料 <ExternalLink size={14} /></a></p>}
-      {page === 4 && <label className="row"><input style={{ width: "auto" }} type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} /> ■リスクと外部送信について理解しました</label>}
+      {page === 4 && <label className="row"><input style={{ width: "auto" }} type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} /> リスクと外部送信について理解しました</label>}
       <div className="row">
         <button className="ghost" disabled={page === 0} onClick={() => { playAppSound("pages"); setPage((value) => value - 1); }}>戻る</button>
         <button className="ghost" onClick={() => props.onDone(false)}>後で設定する</button>
@@ -780,7 +785,6 @@ function ChatsTab(props: {
   speakingMessageId: string | null;
   onBackToChats: () => void;
   onNewChat: () => void;
-  onRefreshNews: () => void;
   onNews: (item: DailyNewsItem) => void;
   onSelectChat: (chatId: string) => void;
   onPin: (chat: Chat) => void;
@@ -875,7 +879,6 @@ function ChatsTab(props: {
             <h3>TODAY&apos;S WORLD</h3>
             <p>{props.news?.date ?? new Date().toISOString().slice(0, 10)}</p>
           </div>
-          <button className="reload-button ghost" onClick={props.onRefreshNews}><RefreshCw size={18} /> Reload</button>
         </div>
         {newsCategories.length > 0 && <div className="news-category-row" role="tablist" aria-label="News categories">
           {newsCategories.map(([category, label]) => <button
@@ -1015,8 +1018,8 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   }
 
   return <div className="grid review-layout">
-    <section className="panel stack review-panel">
-      <div className="section-title"><h2>{collection === "quickAssist" ? "Quick Assist" : "Vocabulary List"}</h2><span className="small">{sortedCards.length} cards</span></div>
+    <div className="screen-heading"><h2>✦ {collection === "quickAssist" ? "Quick Assist" : "Vocabulary List"}</h2><span className="small">{sortedCards.length} cards</span></div>
+    <section className="stack review-panel">
       <div className="row">
         <button className={collection === "vocabulary" ? "primary" : "ghost"} onClick={() => setCollection("vocabulary")}>Vocabulary</button>
         <button className={collection === "quickAssist" ? "primary" : "ghost"} onClick={() => setCollection("quickAssist")}>Quick Assist</button>
@@ -1092,8 +1095,8 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analys
   const latest = props.analyses[0];
   const weekLabels = ["木", "金", "土", "日", "月", "火", "水"];
   return <div className="stack">
+    <div className="screen-heading"><h2>✦ Progress</h2></div>
     <section className="panel progress-panel stack">
-      <div className="section-title"><h2>Progress</h2></div>
       <div className="streak-hero">
         <strong>{props.progress.streak > 0 ? `${props.progress.streak}日` : "今日から始めよう"}</strong>
         <span>continuous study streak</span>
@@ -1171,8 +1174,8 @@ function SettingsTab(props: {
     { id: "about", label: "About" }
   ];
   return <div className="stack">
+    <div className="screen-heading"><h2>✦ Settings</h2></div>
     <section className="panel stack settings-panel">
-      <div className="section-title"><h2>Settings</h2></div>
       <div className="settings-tabs" role="tablist" aria-label="Settings sections">
         {sections.map((item) => <button key={item.id} className={section === item.id ? "primary" : "ghost"} onClick={() => setSection(item.id)}>{item.label}</button>)}
       </div>
@@ -1250,16 +1253,17 @@ function SettingsTab(props: {
         <button className="danger ghost" onClick={props.onClearLearning}>学習データ削除</button>
         <InlineStatus status={props.status} section="data" />
       </div>}
-      {section === "help" && <div className="split">
+      {section === "help" && <div className="stack">
+        <button onClick={props.onReplayOnboarding}>初回案内を再表示</button>
         <InfoLink href={LINKS.apiGuide} label="API設定ガイド" />
-        <InfoLink href={LINKS.privacy} label="Privacy Policy" />
-        <InfoLink href={LINKS.terms} label="Terms" />
         <InfoLink href={LINKS.support} label="Support" />
       </div>}
       {section === "about" && <div className="stack">
+        <InfoLink href={LINKS.officialSite} label="BYOKey Lab公式サイト" />
         <InfoLink href={LINKS.github} label="GitHub Source" icon={<Github size={15} />} />
+        <InfoLink href={LINKS.privacy} label="Privacy Policy" />
+        <InfoLink href={LINKS.terms} label="Terms" />
         <p className="small muted">Version {BUILD_INFO.version} / Commit {BUILD_INFO.commitSha} / Build {BUILD_INFO.buildTime}</p>
-        <button onClick={props.onReplayOnboarding}>初回案内を再表示</button>
         <InlineStatus status={props.status} section="about" />
       </div>}
     </section>

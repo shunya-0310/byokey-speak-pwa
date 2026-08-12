@@ -16,19 +16,82 @@ const soundVolumes: Record<AppSound, number> = {
   messageReceive: 0.52
 };
 
-const activeStreams = new Map<AppSound, HTMLAudioElement>();
+type BrowserAudioContext = typeof AudioContext;
+
+const soundBuffers = new Map<AppSound, AudioBuffer>();
+const soundLoads = new Map<AppSound, Promise<AudioBuffer>>();
+let audioContext: AudioContext | null = null;
+
+function getAudioContext() {
+  if (typeof window === "undefined") return null;
+  const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: BrowserAudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  audioContext ??= new AudioContextClass({ latencyHint: "interactive" });
+  return audioContext;
+}
+
+async function loadSound(sound: AppSound) {
+  const cached = soundBuffers.get(sound);
+  if (cached) return cached;
+  const existing = soundLoads.get(sound);
+  if (existing) return existing;
+  const context = getAudioContext();
+  if (!context) throw new Error("AudioContext is not available.");
+  const loading = fetch(soundFiles[sound])
+    .then((response) => {
+      if (!response.ok) throw new Error(`Failed to load sound: ${sound}`);
+      return response.arrayBuffer();
+    })
+    .then((arrayBuffer) => context.decodeAudioData(arrayBuffer.slice(0)))
+    .then((buffer) => {
+      soundBuffers.set(sound, buffer);
+      return buffer;
+    })
+    .finally(() => {
+      soundLoads.delete(sound);
+    });
+  soundLoads.set(sound, loading);
+  return loading;
+}
+
+export function primeAppSounds(enabled = true) {
+  if (!enabled) return;
+  const context = getAudioContext();
+  if (!context) return;
+  void context.resume().catch(() => {
+    // Some browsers keep the context suspended until a stronger user gesture.
+  });
+  (Object.keys(soundFiles) as AppSound[]).forEach((sound) => {
+    void loadSound(sound).catch(() => {
+      // Missing sound assets should not block the app UI.
+    });
+  });
+}
+
+function playDecodedBuffer(sound: AppSound, buffer: AudioBuffer, context: AudioContext) {
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  gain.gain.value = soundVolumes[sound];
+  source.connect(gain).connect(context.destination);
+  source.start();
+}
 
 export function playAppSound(sound: AppSound, enabled = true) {
-  if (!enabled || typeof Audio === "undefined") return;
-  const previous = activeStreams.get(sound);
-  if (previous) {
-    previous.pause();
-    previous.currentTime = 0;
-  }
-  const audio = new Audio(soundFiles[sound]);
-  audio.volume = soundVolumes[sound];
-  activeStreams.set(sound, audio);
-  void audio.play().catch(() => {
+  if (!enabled) return;
+  const context = getAudioContext();
+  if (!context) return;
+  void context.resume().catch(() => {
     // Browser autoplay rules can block sounds until the first user gesture.
+  });
+  const cached = soundBuffers.get(sound);
+  if (cached) {
+    playDecodedBuffer(sound, cached, context);
+    return;
+  }
+  void loadSound(sound).then((buffer) => {
+    playDecodedBuffer(sound, buffer, context);
+  }).catch(() => {
+    // Sound effects are decorative; keep interaction responsive even when blocked.
   });
 }

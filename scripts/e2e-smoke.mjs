@@ -42,7 +42,7 @@ async function checkViewport(contextOptions) {
         await page.getByRole("button", { name: "次へ" }).click();
         await page.getByText(expectedText).waitFor({ timeout: 5000 });
       }
-      await page.getByLabel("■リスクと外部送信について理解しました").check();
+      await page.getByLabel("リスクと外部送信について理解しました").check();
       await page.getByRole("button", { name: "開始" }).click();
       await page.getByText("TODAY'S WORLD").waitFor({ timeout: 10000 });
     }
