@@ -214,7 +214,7 @@ export default function App() {
 
   if (!data) {
     return <div className="app">
-      {splashMode ? <SplashOverlay onFinished={() => setSplashMode(null)} /> : <main className="main"><div className="panel row"><Loader2 className="spin" /> Loading BYOKey Speak...</div></main>}
+      <SplashOverlay onFinished={() => setSplashMode(null)} />
     </div>;
   }
 
@@ -868,7 +868,7 @@ function ChatsTab(props: {
     </section>;
   }
 
-  return <div className="stack">
+  return <div className="stack chats-screen">
       <div className="chats-headline">
         <h2>✦ Chats</h2>
         <button className="new-chat-pill" onClick={props.onNewChat}><Plus size={26} /> New Chat</button>
