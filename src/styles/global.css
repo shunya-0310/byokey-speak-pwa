@@ -249,6 +249,13 @@ a {
   padding: 0.9rem 1rem calc(0.9rem + 76px);
 }
 
+.main-review {
+  height: calc(100dvh - 104px - 104px - env(safe-area-inset-bottom));
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0.35rem;
+}
+
 .panel,
 .card,
 .modal {
@@ -1114,7 +1121,7 @@ a {
 .review-layout {
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
-  height: calc(100dvh - 178px - env(safe-area-inset-bottom));
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1152,15 +1159,20 @@ a {
   gap: 0.2rem;
   min-height: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .review-list {
   min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
   padding-right: 0.15rem;
-  height: 100%;
-  max-height: none;
+  padding-bottom: calc(7.25rem + env(safe-area-inset-bottom));
+  height: auto;
+  max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-padding-bottom: calc(7.25rem + env(safe-area-inset-bottom));
   scroll-behavior: auto;
   align-content: start;
   grid-auto-rows: max-content;

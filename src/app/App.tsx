@@ -65,7 +65,7 @@ type Tab = "chats" | "review" | "progress" | "settings";
 type ChatPage = "list" | "conversation";
 type SettingsStatus = { section: "api" | "conversation" | "backup" | "about" | "system" | "coach" | "data" | "help"; kind: "ok" | "error" | "info"; text: string } | null;
 type SettingsSection = "system" | "coach" | "backup" | "data" | "help" | "about";
-type SplashMode = "initial" | "postOnboarding" | null;
+type SplashMode = "postOnboarding" | null;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -155,7 +155,7 @@ export default function App() {
   const [backupPassphrase, setBackupPassphrase] = useState("");
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [settingsStatus, setSettingsStatus] = useState<SettingsStatus>(null);
-  const [splashMode, setSplashMode] = useState<SplashMode>("initial");
+  const [splashMode, setSplashMode] = useState<SplashMode>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installBannerDismissed, setInstallBannerDismissed] = useState(() => localStorage.getItem("byokey-install-banner-dismissed") === "1");
 
@@ -247,9 +247,7 @@ export default function App() {
   }, []);
 
   if (!data) {
-    return <div className="app">
-      <SplashOverlay onFinished={() => setSplashMode(null)} />
-    </div>;
+    return <div className="app app-boot" aria-label="BYOKey Speak loading" />;
   }
 
   const currentData = data;
@@ -258,10 +256,6 @@ export default function App() {
   const progress = localProgress(currentData.stats, currentData.messages, currentData.vocab);
   const canSendToGemini = currentData.settings.consentVersion >= 1 && currentData.settings.hasApiKey;
   const showInstallBanner = !installBannerDismissed && !isStandaloneDisplay();
-
-  if (splashMode === "initial") {
-    return <div className="app"><SplashOverlay onFinished={() => setSplashMode(null)} /></div>;
-  }
 
   function handleGlobalInteractionSound(event: React.PointerEvent<HTMLDivElement>) {
     const target = event.target instanceof Element ? event.target : null;
@@ -573,7 +567,7 @@ export default function App() {
         {error && <p className="toast small danger">{error}</p>}
         {busy && <p className="toast small row"><Loader2 size={16} /> {busy}</p>}
       </div>}
-      <main className="main">
+      <main className={`main main-${activeTab}`}>
         {news.notice && <p className="panel small">{news.notice}</p>}
         {activeTab === "chats" && <ChatsTab
           chats={data.chats}
@@ -794,7 +788,7 @@ function Onboarding(props: { onDone: (consented: boolean) => void }) {
       {page === 1 && <p className="small"><a href={LINKS.officialSite} target="_blank" rel="noreferrer">BYOKey Lab公式サイト <ExternalLink size={14} /></a></p>}
       {page === 2 && <p className="small"><a href={LINKS.googleApiKeyDocs} target="_blank" rel="noreferrer">Google公式のAPIキー資料 <ExternalLink size={14} /></a></p>}
       {page === 4 && <label className="row"><input style={{ width: "auto" }} type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} /> リスクと外部送信について理解しました</label>}
-      <div className="row">
+      <div className="row onboarding-actions">
         <button className="ghost" disabled={page === 0} onClick={() => { playAppSound("pages"); setPage((value) => value - 1); }}>戻る</button>
         <button className="ghost" onClick={() => props.onDone(false)}>後で設定する</button>
         {page < 4 ? <button className="primary" onClick={() => { playAppSound("pages"); setPage((value) => value + 1); }}>次へ</button> : <button className="primary" disabled={!consented} onClick={() => { playAppSound("decision"); props.onDone(true); }}>開始</button>}
