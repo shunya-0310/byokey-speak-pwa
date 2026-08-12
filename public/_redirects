@@ -1,1 +1,6 @@
+/_headers /_headers 200
+/manifest.webmanifest /manifest.webmanifest 200
+/icons/* /icons/:splat 200
+/images/* /images/:splat 200
+/assets/* /assets/:splat 200
 /* /index.html 200

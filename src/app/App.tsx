@@ -85,27 +85,53 @@ interface AppData {
 const ONBOARDING = [
   {
     title: "BYOKey Speakへようこそ",
-    body: "BYOKey SpeakはGoogleのAIモデル「Gemini」を使って英会話を楽しむブラウザアプリです。一般的なAI英会話では実現できない、あなた専属のコーチ像を「あなたの言葉で」「自由に」設定して会話を楽しむことができます。誰か偉人を呼び出して会話をするのも面白いかもしれませんね！会話のレベルはCEFR A1~C2まで対応しており、これも自由に設定可能です。",
+    body: [
+      "BYOKey SpeakはGoogleのAIモデル「Gemini」を使って英会話を楽しむブラウザアプリです。",
+      "一般的なAI英会話では実現しにくい、あなた専属のコーチ像を「あなたの言葉で」「自由に」設定して会話を楽しむことができます。",
+      "誰か偉人を呼び出して会話をするのも面白いかもしれませんね！",
+      "会話のレベルはCEFR A1〜C2まで対応しており、これも自由に設定可能です。"
+    ],
     image: "/images/onboarding/onboarding_bg_1.jpg"
   },
   {
     title: "BYOKの流れ",
-    body: "BYOKとはBring Your Own Keyの略です。「APIキー」と呼ばれる合鍵を作成し、これを利用して会話をする仕組みです。Googleアカウントがあれば簡単に作成でき、使用量に応じて料金がかかる従量課金制となっています。APIキーの取得方法はアプリ内ヘルプから閲覧可能です。なお、会話はあなたのブラウザからGemini APIへ直接送信され、BYOKey Labのサーバーは経由しません。また、BYOKey LabがあなたのAPIキーを取得・保存、問い合わせることはありません。利用料の参考情報は以下のサイトをご参照ください。ただし、費用は会話の回数だけでなく文章量や使い方によっても異なるため、都度Google Cloud コンソールにて利用料を確認するようにしてください。",
+    body: [
+      "BYOKとはBring Your Own Keyの略です。",
+      "「APIキー」と呼ばれる合鍵を作成し、これを利用して会話をする仕組みです。Googleアカウントがあれば簡単に作成でき、使用量に応じて料金がかかる従量課金制となっています。",
+      "APIキーの取得方法はアプリ内ヘルプから閲覧可能です。",
+      "会話はあなたのブラウザからGemini APIへ直接送信され、BYOKey Labのサーバーは経由しません。BYOKey LabがあなたのAPIキーを取得・保存、問い合わせることもありません。",
+      "利用料の参考情報は以下のサイトをご参照ください。ただし、費用は会話の回数だけでなく文章量や使い方によっても異なるため、都度Google Cloud コンソールにて利用料を確認してください。"
+    ],
     image: "/images/onboarding/onboarding_bg_2.jpg"
   },
   {
     title: "APIキーの重要な注意",
-    body: "APIキーはGemini API利用権限に紐づく重要な情報です。GoogleはブラウザやモバイルアプリなどにAPIキーを入力して使用する構成をセキュリティリスクの観点から一般には推奨していません。本アプリはBYOK方式として、利用者自身がこのリスクを理解し、自分のキーを自分の責任で入力する設計です。安全に利用するためには、①本アプリ専用のAPIキーを作成し、②利用制限（上限）を設定し、③随時利用量の確認を行い、④定期的にAPIキーを更新することを推奨します。この説明は2026年8月11日時点の情報です。",
+    body: [
+      "APIキーはGemini API利用権限に紐づく重要な情報です。",
+      "Googleは、ブラウザやモバイルアプリなどにAPIキーを入力して使用する構成を、セキュリティリスクの観点から一般には推奨していません。",
+      "本アプリはBYOK方式として、利用者自身がこのリスクを理解し、自分のキーを自分の責任で入力する設計です。",
+      "安全に利用するためには、①本アプリ専用のAPIキーを作成し、②利用制限（上限）を設定し、③随時利用量を確認し、④定期的にAPIキーを更新することを推奨します。",
+      "この説明は2026年8月11日時点の情報です。"
+    ],
     image: "/images/onboarding/onboarding_bg_3.jpg"
   },
   {
     title: "データの保存について",
-    body: "あなたのAPIキー、会話履歴、単語メモ、学習の進み具合は、この端末のブラウザ内に保存されます。BYOKey Labのサーバーへ送られるものではありません。ただし、アプリをアンインストールしたり、ブラウザのキャッシュやサイトデータを削除したり、別の端末へ移ったりすると、保存した内容をそのまま使えなくなることがあります。大切な学習データは、アプリ内のバックアップ機能で書き出し、必要なときに復元できます。バックアップにはAPIキーを含めないため、APIキーだけは新しい端末やブラウザで再入力してください。",
+    body: [
+      "あなたのAPIキー、会話履歴、単語メモ、学習の進み具合は、この端末のブラウザ内に保存されます。BYOKey Labのサーバーへ送られるものではありません。",
+      "ただし、アプリをアンインストールしたり、ブラウザのキャッシュやサイトデータを削除したり、別の端末へ移ったりすると、保存した内容をそのまま使えなくなることがあります。",
+      "大切な学習データは、アプリ内のバックアップ機能で書き出し、必要なときに復元できます。",
+      "バックアップにはAPIキーを含めないため、APIキーだけは新しい端末やブラウザで再入力してください。"
+    ],
     image: "/images/onboarding/onboarding_bg_4.jpg"
   },
   {
     title: "さあ、はじめましょう",
-    body: "設定画面からGeminiモデルの選択、APIキーの設定、会話レベル／コーチの性格などの設定を行いましょう。BYOKによる一段上の体験を実感してください。ご利用にあたっては前段のリスクとAI利用による会話内容の外部送信についての同意をお願いいたします。",
+    body: [
+      "設定画面からGeminiモデルの選択、APIキーの設定、会話レベル／コーチの性格などの設定を行いましょう。",
+      "BYOKによる一段上の体験を実感してください。",
+      "ご利用にあたっては、前段のリスクとAI利用による会話内容の外部送信についての同意をお願いいたします。"
+    ],
     image: "/images/onboarding/onboarding_bg_5.jpg"
   }
 ];
@@ -723,10 +749,8 @@ function SplashOverlay(props: { onFinished: () => void }) {
     return () => window.clearTimeout(timer);
   }, [props.onFinished]);
   return <div className="splash-overlay" aria-label="BYOKey Speak loading">
-    <div className="splash-logo-wrap">
-      <span className="splash-light splash-light-a" />
-      <span className="splash-light splash-light-b" />
-      <span className="splash-flash" />
+    <div className="splash-logo-wrap" aria-hidden="true">
+      <img src="/icons/splash-icon.png" alt="" />
     </div>
   </div>;
 }
@@ -756,7 +780,9 @@ function Onboarding(props: { onDone: (consented: boolean) => void }) {
     <section className="onboarding-card">
       <p className="muted">Page {page + 1} / 5</p>
       <h1>{current.title}</h1>
-      <p>{current.body}</p>
+      <div className="onboarding-copy">
+        {current.body.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+      </div>
       {page === 1 && <p className="small"><a href={LINKS.officialSite} target="_blank" rel="noreferrer">BYOKey Lab公式サイト <ExternalLink size={14} /></a></p>}
       {page === 2 && <p className="small"><a href={LINKS.googleApiKeyDocs} target="_blank" rel="noreferrer">Google公式のAPIキー資料 <ExternalLink size={14} /></a></p>}
       {page === 4 && <label className="row"><input style={{ width: "auto" }} type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} /> リスクと外部送信について理解しました</label>}
@@ -980,6 +1006,7 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("alphabet");
   const [showAdd, setShowAdd] = useState(false);
   const [activeRail, setActiveRail] = useState<{ letter: string; y: number } | null>(null);
+  const [selectedQuickAssist, setSelectedQuickAssist] = useState<VocabCard | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const cardsWithUsage = countActiveVocabularyUse(props.messages, props.vocab);
   const collectionCards = cardsWithUsage.filter((card) => collection === "quickAssist" ? card.source === "QuickAssist" : card.source !== "QuickAssist");
@@ -1049,14 +1076,31 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
       {!sortedCards.length && <p className="muted">{collection === "quickAssist" ? "Quick Assistで選んだ表現はまだありません。" : "まだカードがありません。会話すると表現がここに貯まります。"}</p>}
       <div className="review-list-wrap">
         <div className="review-list stack" ref={listRef}>
-          {sortedCards.map((card) => <article className="card vocab-card compact-vocab" data-usage-tier={usageTier(card.usageCount)} id={`vocab-card-${card.id}`} key={card.id}>
+          {sortedCards.map((card) => <article
+            className={`card vocab-card compact-vocab${collection === "quickAssist" ? " tappable-card" : ""}`}
+            data-usage-tier={usageTier(card.usageCount)}
+            id={`vocab-card-${card.id}`}
+            key={card.id}
+            role={collection === "quickAssist" ? "button" : undefined}
+            tabIndex={collection === "quickAssist" ? 0 : undefined}
+            onClick={() => {
+              if (collection === "quickAssist") setSelectedQuickAssist(card);
+            }}
+            onKeyDown={(event) => {
+              if (collection !== "quickAssist") return;
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSelectedQuickAssist(card);
+              }
+            }}
+          >
             <div className="vocab-main">
               <h3>{card.expression}</h3>
               <p className="muted">{card.meaning || "意味は未設定です。"} <span>{new Date(card.createdAt).toLocaleDateString()}</span></p>
             </div>
             <div className="vocab-actions">
-              <button className="icon-button ghost" title="Favorite" onClick={async () => { await setEquivalentVocabFavorite(card, !card.favorite); await props.onReload(); }}><Star size={20} fill={card.favorite ? "currentColor" : "none"} /></button>
-              <button className="icon-button danger ghost" title="Delete" onClick={async () => { await deleteEquivalentVocabCard(card); await props.onReload(); }}><Trash2 size={20} /></button>
+              <button className="icon-button ghost" title="Favorite" onClick={async (event) => { event.stopPropagation(); await setEquivalentVocabFavorite(card, !card.favorite); await props.onReload(); }}><Star size={20} fill={card.favorite ? "currentColor" : "none"} /></button>
+              <button className="icon-button danger ghost" title="Delete" onClick={async (event) => { event.stopPropagation(); await deleteEquivalentVocabCard(card); await props.onReload(); }}><Trash2 size={20} /></button>
             </div>
           </article>)}
         </div>
@@ -1080,6 +1124,19 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
         </div>}
       </div>
     </section>
+    {selectedQuickAssist && <div className="modal-backdrop" onClick={() => setSelectedQuickAssist(null)}>
+      <section className="modal stack quick-assist-detail" onClick={(event) => event.stopPropagation()}>
+        <div className="section-title">
+          <h2>Quick Assist</h2>
+          <button className="icon-button ghost" aria-label="閉じる" onClick={() => setSelectedQuickAssist(null)}>×</button>
+        </div>
+        <article className="card stack">
+          <strong>{selectedQuickAssist.expression}</strong>
+          <p>{selectedQuickAssist.meaning || "意味は未設定です。"}</p>
+          <p className="small muted">追加日：{new Date(selectedQuickAssist.createdAt).toLocaleDateString()} / 使用回数：{selectedQuickAssist.usageCount ?? 0}</p>
+        </article>
+      </section>
+    </div>}
   </div>;
 }
 
@@ -1173,12 +1230,13 @@ function SettingsTab(props: {
     { id: "help", label: "ヘルプ" },
     { id: "about", label: "About" }
   ];
-  return <div className="stack">
+  return <div className="stack settings-layout">
     <div className="screen-heading"><h2>✦ Settings</h2></div>
+    <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+      {sections.map((item) => <button key={item.id} className={section === item.id ? "primary" : "ghost"} onClick={() => setSection(item.id)}>{item.label}</button>)}
+    </div>
     <section className="panel stack settings-panel">
-      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-        {sections.map((item) => <button key={item.id} className={section === item.id ? "primary" : "ghost"} onClick={() => setSection(item.id)}>{item.label}</button>)}
-      </div>
+      <div className="settings-scroll">
       {section === "system" && <div className="stack">
         <article className="card stack">
           <div className="section-title"><h3><KeyRound size={18} /> Gemini API Key</h3><span className="small">{props.settings.hasApiKey ? "保存済み" : "未設定"}</span></div>
@@ -1266,6 +1324,7 @@ function SettingsTab(props: {
         <p className="small muted">Version {BUILD_INFO.version} / Commit {BUILD_INFO.commitSha} / Build {BUILD_INFO.buildTime}</p>
         <InlineStatus status={props.status} section="about" />
       </div>}
+      </div>
     </section>
   </div>;
 }
