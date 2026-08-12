@@ -20,32 +20,19 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: null,
-      includeAssets: [
-        "icons/icon-192.png",
-        "icons/icon-512.png",
-        "icons/icon-maskable-192.png",
-        "icons/icon-maskable-512.png",
-        "icons/splash-icon.png",
-        "images/splash_logo.webp"
-      ],
+      includeAssets: ["images/splash_logo.webp"],
       manifest: {
         name: "BYOKey Speak",
         short_name: "BYOKey Speak",
         description: "Gemini APIキーを自分のブラウザから使う、登録不要の英会話PWA。",
         theme_color: "#101b2c",
-        background_color: "#101b2c",
+        background_color: "#FEFEFE",
         display: "standalone",
         start_url: "/",
         scope: "/",
-        icons: [
-          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-          { src: "/icons/icon-maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
-          { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
-        ],
         shortcuts: [
-          { name: "New Chat", short_name: "New Chat", url: "/?action=new-chat", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-          { name: "Settings", short_name: "Settings", url: "/?tab=settings", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] }
+          { name: "New Chat", short_name: "New Chat", url: "/?action=new-chat" },
+          { name: "Settings", short_name: "Settings", url: "/?tab=settings" }
         ]
       },
       workbox: {

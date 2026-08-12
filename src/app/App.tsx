@@ -750,7 +750,7 @@ function SplashOverlay(props: { onFinished: () => void }) {
   }, [props.onFinished]);
   return <div className="splash-overlay" aria-label="BYOKey Speak loading">
     <div className="splash-logo-wrap" aria-hidden="true">
-      <img src="/icons/splash-icon.png" alt="" />
+      <img src="/images/splash_logo.webp" alt="" />
     </div>
   </div>;
 }
