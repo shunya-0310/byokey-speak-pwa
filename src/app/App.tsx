@@ -66,6 +66,163 @@ type ChatPage = "list" | "conversation";
 type SettingsStatus = { section: "api" | "conversation" | "backup" | "about" | "system" | "coach" | "data" | "help"; kind: "ok" | "error" | "info"; text: string } | null;
 type SettingsSection = "system" | "coach" | "backup" | "data" | "help" | "about";
 type SplashMode = "postOnboarding" | null;
+type TutorialKind = "chats" | "chatControls" | "vocabulary" | "progress" | "settings";
+
+const TUTORIAL_SEEN_KEY = "byokey-speak-tutorials-seen";
+const TUTORIAL_TARGETS = {
+  chatsDailyNews: "chats_daily_news",
+  chatsNewChat: "chats_new_chat",
+  chatAutoMode: "chat_auto_mode",
+  chatQuickAssist: "chat_quick_assist",
+  chatWebSearch: "chat_web_search",
+  chatMic: "chat_mic",
+  vocabularyList: "vocabulary_list",
+  vocabularyCard: "vocabulary_card",
+  vocabularyAdd: "vocabulary_add",
+  progressAnalysis: "progress_analysis",
+  progressPractice: "progress_practice",
+  settingsApiKey: "settings_api_key",
+  settingsHelp: "settings_help",
+  settingsCoach: "settings_coach",
+  settingsCefr: "settings_cefr",
+  settingsCoachSkill: "settings_coach_skill"
+} as const;
+
+type TutorialStep = {
+  kind: TutorialKind;
+  title: string;
+  message: string;
+  targetId?: string;
+  tab: Tab;
+  chatPage?: ChatPage;
+  settingsSection?: SettingsSection;
+};
+
+const TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    kind: "chats",
+    title: "TODAY'S WORLD",
+    message: "毎朝世界のトップニュースが配信されます。気になる記事の Talk から、その話題でChatを立ち上げられます。",
+    targetId: TUTORIAL_TARGETS.chatsDailyNews,
+    tab: "chats",
+    chatPage: "list"
+  },
+  {
+    kind: "chats",
+    title: "+ New Chat",
+    message: "ニュース以外の話題で話したいときは、新しい会話をここから始めます。",
+    targetId: TUTORIAL_TARGETS.chatsNewChat,
+    tab: "chats",
+    chatPage: "list"
+  },
+  {
+    kind: "chatControls",
+    title: "ヘッドフォン",
+    message: "タップするたびに通常、マニュアル送信、フルオートへ切り替わります。マニュアル送信では読み上げ後にマイクが起動し、フルオートでは音声入力後の送信まで自動で行います。",
+    targetId: TUTORIAL_TARGETS.chatAutoMode,
+    tab: "chats",
+    chatPage: "conversation"
+  },
+  {
+    kind: "chatControls",
+    title: "キラキラ",
+    message: "Quick Assistです。言葉に詰まったとき、日本語で聞くと短い英語候補を出します。",
+    targetId: TUTORIAL_TARGETS.chatQuickAssist,
+    tab: "chats",
+    chatPage: "conversation"
+  },
+  {
+    kind: "chatControls",
+    title: "地球マーク",
+    message: "最新の話題など、検索を伴うチャットをしたいときにオンにします。",
+    targetId: TUTORIAL_TARGETS.chatWebSearch,
+    tab: "chats",
+    chatPage: "conversation"
+  },
+  {
+    kind: "chatControls",
+    title: "マイク",
+    message: "「英」は英語認識、「日」は日本語認識の音声入力です。話す言語に合わせて選べます。",
+    targetId: TUTORIAL_TARGETS.chatMic,
+    tab: "chats",
+    chatPage: "conversation"
+  },
+  {
+    kind: "vocabulary",
+    title: "Vocabulary List",
+    message: "Chatで登場した単語やイディオムは自動で登録されます。",
+    targetId: TUTORIAL_TARGETS.vocabularyList,
+    tab: "review"
+  },
+  {
+    kind: "vocabulary",
+    title: "Card color",
+    message: "頻出する用語は、会話で出るほど色が濃くなっていきます。",
+    targetId: TUTORIAL_TARGETS.vocabularyCard,
+    tab: "review"
+  },
+  {
+    kind: "vocabulary",
+    title: "＋",
+    message: "必要な単語は＋ボタンから手動でも登録できます。",
+    targetId: TUTORIAL_TARGETS.vocabularyAdd,
+    tab: "review"
+  },
+  {
+    kind: "progress",
+    title: "Conversation Analysis",
+    message: "会話の履歴が溜まったら、Progress画面から自分の話し方の特徴や多い失敗を分析できます。",
+    targetId: TUTORIAL_TARGETS.progressAnalysis,
+    tab: "progress"
+  },
+  {
+    kind: "progress",
+    title: "Practice",
+    message: "分析結果はカードで保存されます。詳細から、苦手な表現を練習する会話も始められます。",
+    targetId: TUTORIAL_TARGETS.progressPractice,
+    tab: "progress"
+  },
+  {
+    kind: "settings",
+    title: "API Key",
+    message: "ここにAPIキーを入力し、利用するモデルを選びます。APIキーはBYOKey Labのサーバーには送られず、このブラウザ内またはセッション内に保存されます。",
+    targetId: TUTORIAL_TARGETS.settingsApiKey,
+    tab: "settings",
+    settingsSection: "system"
+  },
+  {
+    kind: "settings",
+    title: "ヘルプ",
+    message: "APIキーの取得方法がわからない場合は、ここをタップして設定ガイドを確認できます。初回案内やチュートリアルもここから再表示できます。",
+    targetId: TUTORIAL_TARGETS.settingsHelp,
+    tab: "settings",
+    settingsSection: "help"
+  },
+  {
+    kind: "settings",
+    title: "レベル、コーチ設定",
+    message: "会話レベルやコーチの話し方は「レベル、コーチ設定」で変更できます。次へ進むと、この画面へ切り替わります。",
+    targetId: TUTORIAL_TARGETS.settingsCoach,
+    tab: "settings",
+    settingsSection: "coach"
+  },
+  {
+    kind: "settings",
+    title: "CEFRレベル",
+    message: "CEFRレベルを選ぶと、会話の語彙・文法・返答の難しさを調整できます。",
+    targetId: TUTORIAL_TARGETS.settingsCefr,
+    tab: "settings",
+    settingsSection: "coach"
+  },
+  {
+    kind: "settings",
+    title: "Coach Personalities & Skills",
+    message: "性格、話し方、添削方法、解説の詳しさなどを自由に指定できます。",
+    targetId: TUTORIAL_TARGETS.settingsCoachSkill,
+    tab: "settings",
+    settingsSection: "coach"
+  }
+];
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -158,6 +315,16 @@ export default function App() {
   const [splashMode, setSplashMode] = useState<SplashMode>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installBannerDismissed, setInstallBannerDismissed] = useState(() => localStorage.getItem("byokey-install-banner-dismissed") === "1");
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("system");
+  const [tutorialStep, setTutorialStep] = useState<number | null>(null);
+  const [tutorialReplayMode, setTutorialReplayMode] = useState(false);
+  const [tutorialSeen, setTutorialSeen] = useState<Record<TutorialKind, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(TUTORIAL_SEEN_KEY) ?? "{}") as Record<TutorialKind, boolean>;
+    } catch {
+      return {} as Record<TutorialKind, boolean>;
+    }
+  });
 
   async function reload() {
     const [settings, chats, messages, vocab, notes, stats, analyses] = await Promise.all([
@@ -207,6 +374,51 @@ export default function App() {
     playAppSound(sound, currentData.settings.soundEffectsEnabled);
   }
 
+  function markTutorialKindSeen(kind: TutorialKind) {
+    setTutorialSeen((current) => {
+      const next = { ...current, [kind]: true };
+      localStorage.setItem(TUTORIAL_SEEN_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function closeTutorial() {
+    if (tutorialStep === null) return;
+    const currentKind = TUTORIAL_STEPS[tutorialStep]?.kind;
+    if (currentKind && !tutorialReplayMode) markTutorialKindSeen(currentKind);
+    setTutorialStep(null);
+    setTutorialReplayMode(false);
+  }
+
+  function nextTutorialStep() {
+    if (tutorialStep === null) return;
+    const current = TUTORIAL_STEPS[tutorialStep];
+    const nextIndex = tutorialStep + 1;
+    if (!tutorialReplayMode) {
+      const next = TUTORIAL_STEPS[nextIndex];
+      if (!next || next.kind !== current.kind) {
+        markTutorialKindSeen(current.kind);
+        setTutorialStep(null);
+        return;
+      }
+    }
+    if (nextIndex >= TUTORIAL_STEPS.length) {
+      if (current) markTutorialKindSeen(current.kind);
+      setTutorialStep(null);
+      setTutorialReplayMode(false);
+      return;
+    }
+    if (current && TUTORIAL_STEPS[nextIndex].kind !== current.kind) markTutorialKindSeen(current.kind);
+    setTutorialStep(nextIndex);
+  }
+
+  function replayTutorials() {
+    localStorage.removeItem(TUTORIAL_SEEN_KEY);
+    setTutorialSeen({} as Record<TutorialKind, boolean>);
+    setTutorialReplayMode(true);
+    setTutorialStep(0);
+  }
+
   useEffect(() => {
     void reload();
     void refreshNews();
@@ -245,6 +457,29 @@ export default function App() {
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
+
+  useEffect(() => {
+    if (showOnboarding || !data || tutorialStep !== null) return;
+    const kindByTab: Record<Tab, TutorialKind> = {
+      chats: chatPage === "conversation" ? "chatControls" : "chats",
+      review: "vocabulary",
+      progress: "progress",
+      settings: "settings"
+    };
+    const kind = kindByTab[activeTab];
+    if (tutorialSeen[kind]) return;
+    const index = TUTORIAL_STEPS.findIndex((step) => step.kind === kind);
+    if (index >= 0) setTutorialStep(index);
+  }, [activeTab, chatPage, data, showOnboarding, tutorialSeen, tutorialStep]);
+
+  useEffect(() => {
+    if (tutorialStep === null) return;
+    const step = TUTORIAL_STEPS[tutorialStep];
+    if (!step) return;
+    if (activeTab !== step.tab) setActiveTab(step.tab);
+    if (step.chatPage && chatPage !== step.chatPage) setChatPage(step.chatPage);
+    if (step.settingsSection && settingsSection !== step.settingsSection) setSettingsSection(step.settingsSection);
+  }, [activeTab, chatPage, settingsSection, tutorialStep]);
 
   if (!data) {
     return <div className="app app-boot" aria-label="BYOKey Speak loading" />;
@@ -704,6 +939,9 @@ export default function App() {
           onExport={exportBackup}
           onRestore={restoreBackup}
           onReplayOnboarding={() => setShowOnboarding(true)}
+          onReplayTutorials={replayTutorials}
+          section={settingsSection}
+          setSection={setSettingsSection}
           onClearLearning={async () => {
             if (!confirm("会話、Vocabulary、進捗、分析を削除しますか。APIキーは残ります。")) return;
             await Promise.all([db.chats.clear(), db.messages.clear(), db.vocabCards.clear(), db.learningNotes.clear(), db.dailyStats.clear(), db.analyses.clear()]);
@@ -718,6 +956,21 @@ export default function App() {
         <TabButton tab="progress" active={activeTab} setActive={setActiveTab} icon={<BarChart3 size={20} />} label="Progress" />
         <TabButton tab="settings" active={activeTab} setActive={setActiveTab} icon={<Settings size={20} />} label="Settings" />
       </nav>
+      {tutorialStep !== null && <TutorialOverlay
+        step={TUTORIAL_STEPS[tutorialStep]}
+        stepIndex={tutorialStep}
+        totalSteps={tutorialReplayMode
+          ? TUTORIAL_STEPS.length
+          : TUTORIAL_STEPS.filter((step) => step.kind === TUTORIAL_STEPS[tutorialStep].kind).length}
+        localStepIndex={tutorialReplayMode
+          ? tutorialStep
+          : TUTORIAL_STEPS.filter((step, index) => step.kind === TUTORIAL_STEPS[tutorialStep].kind && index <= tutorialStep).length - 1}
+        onClose={closeTutorial}
+        onNext={nextTutorialStep}
+        isLast={tutorialReplayMode
+          ? tutorialStep === TUTORIAL_STEPS.length - 1
+          : TUTORIAL_STEPS[tutorialStep + 1]?.kind !== TUTORIAL_STEPS[tutorialStep].kind}
+      />}
       {assist.open && <AssistModal
         assist={assist}
         setAssist={setAssist}
@@ -755,6 +1008,85 @@ function SplashOverlay(props: { onFinished: () => void }) {
       <img src="/images/splash_logo.webp" alt="" />
     </div>
   </div>;
+}
+
+function TutorialOverlay(props: {
+  step: TutorialStep;
+  stepIndex: number;
+  localStepIndex: number;
+  totalSteps: number;
+  isLast: boolean;
+  onClose: () => void;
+  onNext: () => void;
+}) {
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const [calloutHeight, setCalloutHeight] = useState(0);
+  const calloutRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function update() {
+      const target = props.step.targetId ? document.querySelector<HTMLElement>(`[data-tutorial-id="${props.step.targetId}"]`) : null;
+      if (!target) {
+        setTargetRect(null);
+        return;
+      }
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      window.requestAnimationFrame(() => setTargetRect(target.getBoundingClientRect()));
+    }
+    update();
+    const timers = [window.setTimeout(update, 180), window.setTimeout(update, 520)];
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [props.step]);
+
+  useEffect(() => {
+    const element = calloutRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setCalloutHeight(entry.contentRect.height));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const frame = targetRect ? paddedFrame(targetRect, 8) : null;
+  const calloutTop = (() => {
+    const edge = 16;
+    const gap = 14;
+    if (!frame || !calloutHeight) return "50%";
+    if (frame.bottom + gap + calloutHeight <= window.innerHeight - edge) return `${frame.bottom + gap}px`;
+    return `${Math.max(edge, frame.top - gap - calloutHeight)}px`;
+  })();
+  const centered = !frame || !calloutHeight;
+
+  return <div className="tutorial-overlay" role="dialog" aria-modal="true" aria-label="チュートリアル">
+    <div className="tutorial-scrim" />
+    {frame && <div className="tutorial-frame" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} />}
+    <div
+      ref={calloutRef}
+      className="tutorial-callout"
+      style={centered ? { top: "50%", transform: "translate(-50%, -50%)" } : { top: calloutTop }}
+    >
+      <h2>{props.step.title}</h2>
+      <p>{props.step.message}</p>
+      <p className="small muted">{props.localStepIndex + 1} / {props.totalSteps}</p>
+      <div className="row tutorial-actions">
+        <button className="ghost" onClick={props.onClose}>閉じる</button>
+        <button className="primary" onClick={props.onNext}>{props.isLast ? "OK" : "次へ"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function paddedFrame(rect: DOMRect, padding: number) {
+  const left = Math.max(3, rect.left - padding);
+  const top = Math.max(3, rect.top - padding);
+  const right = Math.min(window.innerWidth - 3, rect.right + padding);
+  const bottom = Math.min(window.innerHeight - 3, rect.bottom + padding);
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top), bottom };
 }
 
 function isStandaloneDisplay() {
@@ -878,17 +1210,17 @@ function ChatsTab(props: {
       <div className="composer">
         {props.settings.voiceMode !== "off" && <p className="voice-mode-hint small">{props.settings.voiceMode === "manual" ? "✦ マニュアル送信: 読み上げ後に英語マイクが起動します" : "✦ フルオート: 音声入力が終わると自動で送信します"}</p>}
         <div className="composer-actions" aria-label="Conversation tools">
-          <button className={`icon-button ghost voice-mode-button ${props.settings.voiceMode !== "off" ? "active" : ""}`} title="Voice Mode切替" onClick={props.onVoiceModeCycle}>
+          <button data-tutorial-id={TUTORIAL_TARGETS.chatAutoMode} className={`icon-button ghost voice-mode-button ${props.settings.voiceMode !== "off" ? "active" : ""}`} title="Voice Mode切替" onClick={props.onVoiceModeCycle}>
             <Headphones size={20} />
             {props.settings.voiceMode !== "off" && <span className="mode-badge">{props.settings.voiceMode === "manual" ? "→" : "⇔"}</span>}
           </button>
-          <button className="icon-button ghost" title="Quick Assist" onClick={props.onAssist}><Sparkles size={20} /></button>
-          <button className={`icon-button ghost ${props.webSearch ? "active" : ""}`} title="Web検索" onClick={() => props.setWebSearch(!props.webSearch)}><Globe2 size={20} /></button>
+          <button data-tutorial-id={TUTORIAL_TARGETS.chatQuickAssist} className="icon-button ghost" title="Quick Assist" onClick={props.onAssist}><Sparkles size={20} /></button>
+          <button data-tutorial-id={TUTORIAL_TARGETS.chatWebSearch} className={`icon-button ghost ${props.webSearch ? "active" : ""}`} title="Web検索" onClick={() => props.setWebSearch(!props.webSearch)}><Globe2 size={20} /></button>
           <button className="icon-button ghost" title="入力をひとつ戻す" disabled={!props.canUndoDraft} onClick={props.onUndo}><Undo2 size={20} /></button>
         </div>
         <div className="composer-input-row">
           <textarea rows={1} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Let's talk!" />
-          <button className="voice-mini" disabled={!canRecognizeSpeech()} title="English voice input" onClick={() => props.onMic("en-US")}><Mic size={19} /><span>英</span></button>
+          <button data-tutorial-id={TUTORIAL_TARGETS.chatMic} className="voice-mini" disabled={!canRecognizeSpeech()} title="English voice input" onClick={() => props.onMic("en-US")}><Mic size={19} /><span>英</span></button>
           <button className="voice-mini" disabled={!canRecognizeSpeech()} title="Japanese voice input" onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>日</span></button>
           <button className="send-mini primary" title="Send" onClick={props.onSend}><Send size={22} /></button>
         </div>
@@ -899,9 +1231,9 @@ function ChatsTab(props: {
   return <div className="stack chats-screen">
       <div className="chats-headline">
         <h2>✦ Chats</h2>
-        <button className="new-chat-pill" onClick={props.onNewChat}><Plus size={26} /> New Chat</button>
+        <button data-tutorial-id={TUTORIAL_TARGETS.chatsNewChat} className="new-chat-pill" onClick={props.onNewChat}><Plus size={26} /> New Chat</button>
       </div>
-      <section className="daily-news-section stack" aria-label="Daily News">
+      <section data-tutorial-id={TUTORIAL_TARGETS.chatsDailyNews} className="daily-news-section stack" aria-label="Daily News">
         <div className="daily-news-title-row">
           <div>
             <h3>TODAY&apos;S WORLD</h3>
@@ -1047,7 +1379,7 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   }
 
   return <div className="grid review-layout">
-    <div className="screen-heading"><h2>✦ {collection === "quickAssist" ? "Quick Assist" : "Vocabulary List"}</h2><span className="small">{sortedCards.length} cards</span></div>
+    <div data-tutorial-id={TUTORIAL_TARGETS.vocabularyList} className="screen-heading"><h2>✦ {collection === "quickAssist" ? "Quick Assist" : "Vocabulary List"}</h2><span className="small">{sortedCards.length} cards</span></div>
     <section className="stack review-panel">
       <div className="row">
         <button className={collection === "vocabulary" ? "primary" : "ghost"} onClick={() => setCollection("vocabulary")}>Vocabulary</button>
@@ -1059,7 +1391,7 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
         <button className={effectiveSort === "alphabet" ? "primary" : "ghost"} onClick={() => setSort("alphabet")}>ABC</button>
         {collection === "vocabulary" && <button className={effectiveSort === "frequency" ? "primary" : "ghost"} onClick={() => setSort("frequency")}>頻度</button>}
         <button className={effectiveSort === "favorite" ? "primary" : "ghost"} onClick={() => setSort("favorite")}>★</button>
-        <button className="icon-button ghost add-toggle" title="手動追加" onClick={() => setShowAdd((current) => !current)}><Plus size={19} /></button>
+        <button data-tutorial-id={TUTORIAL_TARGETS.vocabularyAdd} className="icon-button ghost add-toggle" title="手動追加" onClick={() => setShowAdd((current) => !current)}><Plus size={19} /></button>
       </div>
       {showAdd && <div className="manual-add stack">
         <div className="split">
@@ -1078,9 +1410,10 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
       {!sortedCards.length && <p className="muted">{collection === "quickAssist" ? "Quick Assistで選んだ表現はまだありません。" : "まだカードがありません。会話すると表現がここに貯まります。"}</p>}
       <div className="review-list-wrap">
         <div className="review-list stack" ref={listRef}>
-          {sortedCards.map((card) => <article
+          {sortedCards.map((card, index) => <article
             className={`card vocab-card compact-vocab${collection === "quickAssist" ? " tappable-card" : ""}`}
             data-usage-tier={usageTier(card.usageCount)}
+            data-tutorial-id={index === 0 ? TUTORIAL_TARGETS.vocabularyCard : undefined}
             id={`vocab-card-${card.id}`}
             key={card.id}
             role={collection === "quickAssist" ? "button" : undefined}
@@ -1174,7 +1507,7 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analys
       </div>
     </section>
     <section className="panel stack english-profile">
-      <div className="section-title english-profile-title"><h2>✦ Your English Profile</h2><button className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}><Sparkles size={16} /> 会話を分析</button></div>
+      <div className="section-title english-profile-title"><h2>✦ Your English Profile</h2><button data-tutorial-id={TUTORIAL_TARGETS.progressAnalysis} className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}><Sparkles size={16} /> 会話を分析</button></div>
       {!latest && <p className="muted">20発話以上で分析できます。分析結果はこのブラウザ内へ保存されます。</p>}
       {latest && <>
         <div className="analysis-card">
@@ -1191,7 +1524,7 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analys
           <strong>{pattern.title}</strong>
           <p className="small">{pattern.nextAction}</p>
         </article>)}
-        <div className="row">{latest.result.practicePrompts.slice(0, 3).map((prompt) => <button key={prompt} onClick={() => props.onPractice(prompt)}>{prompt}</button>)}</div>
+        <div data-tutorial-id={TUTORIAL_TARGETS.progressPractice} className="row">{latest.result.practicePrompts.slice(0, 3).map((prompt) => <button key={prompt} onClick={() => props.onPractice(prompt)}>{prompt}</button>)}</div>
       </>}
     </section>
   </div>;
@@ -1220,9 +1553,13 @@ function SettingsTab(props: {
   onExport: () => void;
   onRestore: (file?: File) => void;
   onReplayOnboarding: () => void;
+  onReplayTutorials: () => void;
+  section: SettingsSection;
+  setSection: (section: SettingsSection) => void;
   onClearLearning: () => void;
 }) {
-  const [section, setSection] = useState<SettingsSection>("system");
+  const section = props.section;
+  const setSection = props.setSection;
   const selectedCefrGuide = CEFR_GUIDE.find((item) => item.level === props.settings.englishLevel) ?? CEFR_GUIDE[0];
   const sections: Array<{ id: SettingsSection; label: string }> = [
     { id: "system", label: "システム設定" },
@@ -1235,13 +1572,18 @@ function SettingsTab(props: {
   return <div className="stack settings-layout">
     <div className="screen-heading"><h2>✦ Settings</h2></div>
     <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-      {sections.map((item) => <button key={item.id} className={section === item.id ? "primary" : "ghost"} onClick={() => setSection(item.id)}>{item.label}</button>)}
+      {sections.map((item) => <button
+        key={item.id}
+        data-tutorial-id={item.id === "coach" ? TUTORIAL_TARGETS.settingsCoach : undefined}
+        className={section === item.id ? "primary" : "ghost"}
+        onClick={() => setSection(item.id)}
+      >{item.label}</button>)}
     </div>
     <section className="panel stack settings-panel">
       <div className="settings-scroll">
       {section === "system" && <div className="stack">
         <article className="card stack">
-          <div className="section-title"><h3><KeyRound size={18} /> Gemini API Key</h3><span className="small">{props.settings.hasApiKey ? "保存済み" : "未設定"}</span></div>
+          <div data-tutorial-id={TUTORIAL_TARGETS.settingsApiKey} className="section-title"><h3><KeyRound size={18} /> Gemini API Key</h3><span className="small">{props.settings.hasApiKey ? "保存済み" : "未設定"}</span></div>
           <p className="small muted">BYOKey LabはAPIキーを受信、保存、閲覧するためのアプリケーションサーバーやデータベースを持たず、通常利用時に利用者のAPIキーを保存・把握しません。コードはGitHubで公開し、データの保存先、通信先、APIキーの取扱いを確認できるようにしています。</p>
           <p className="small"><ShieldAlert size={15} /> クライアント側にAPIキーを入力する構成は、Google公式の一般的なセキュリティ推奨とは異なります。理解・納得できる方のみ利用してください。</p>
           <label>Model<select value={props.settings.model} onChange={(event) => props.onSettings({ model: event.target.value })}>{GEMINI_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
@@ -1281,7 +1623,7 @@ function SettingsTab(props: {
           <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
           <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
         </article>
-        <article className="card stack cefr-guide">
+        <article data-tutorial-id={TUTORIAL_TARGETS.settingsCefr} className="card stack cefr-guide">
           <h3>CEFRレベルの目安</h3>
           <div className="cefr-chip-row" role="listbox" aria-label="CEFR level">
             {CEFR_GUIDE.map((item) => <button
@@ -1295,7 +1637,7 @@ function SettingsTab(props: {
             <div><p>{selectedCefrGuide.overview}</p><p className="small muted">出力の目安：{selectedCefrGuide.output}</p></div>
           </div>
         </article>
-        <label>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
+        <label data-tutorial-id={TUTORIAL_TARGETS.settingsCoachSkill}>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
         <InlineStatus status={props.status} section="coach" />
         <InlineStatus status={props.status} section="conversation" />
       </div>}
@@ -1315,7 +1657,8 @@ function SettingsTab(props: {
       </div>}
       {section === "help" && <div className="stack">
         <button onClick={props.onReplayOnboarding}>初回案内を再表示</button>
-        <InfoLink href={LINKS.apiGuide} label="API設定ガイド" />
+        <button onClick={props.onReplayTutorials}>チュートリアルを再表示</button>
+        <div data-tutorial-id={TUTORIAL_TARGETS.settingsHelp}><InfoLink href={LINKS.apiGuide} label="API設定ガイド" /></div>
         <InfoLink href={LINKS.support} label="Support" />
       </div>}
       {section === "about" && <div className="stack">

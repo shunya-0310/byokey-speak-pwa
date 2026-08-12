@@ -34,11 +34,14 @@ async function checkViewport(contextOptions) {
     if (onboardingVisible) {
       async function advanceOnboarding(expectedText) {
         for (let attempt = 0; attempt < 3; attempt += 1) {
+          const beforeText = await page.locator("body").innerText().catch(() => "");
           await page.locator(".onboarding-actions button.primary").click({ force: true, timeout: 5000 });
           try {
             await page.waitForFunction((text) => document.body.innerText.includes(text), expectedText, { timeout: 2500 });
             return;
           } catch {
+            const afterText = await page.locator("body").innerText().catch(() => "");
+            if (afterText === beforeText) continue;
             // In headless browser checks the very first tap can occasionally be swallowed while the page finishes settling.
             // Retry the same visible primary action before failing the smoke test.
           }

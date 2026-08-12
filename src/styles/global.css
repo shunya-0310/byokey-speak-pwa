@@ -7,8 +7,9 @@
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -68,11 +69,12 @@ a {
 }
 
 .app {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
 }
 
 .app::before {
@@ -138,6 +140,59 @@ a {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: auto;
+}
+
+.tutorial-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.tutorial-frame {
+  position: absolute;
+  border: 2px solid var(--gold);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.12),
+    0 0 18px color-mix(in srgb, var(--gold) 82%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--gold) 42%, transparent);
+  pointer-events: none;
+}
+
+.tutorial-callout {
+  position: absolute;
+  left: 50%;
+  width: min(560px, calc(100% - 2.25rem));
+  transform: translateX(-50%);
+  padding: 0.9rem;
+  border: 1.5px solid var(--gold);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--parchment-light) 94%, transparent);
+  color: var(--ink);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45), 0 0 18px color-mix(in srgb, var(--gold) 45%, transparent);
+}
+
+.tutorial-callout h2 {
+  margin: 0 0 0.45rem;
+  color: var(--coral-deep);
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.tutorial-callout p {
+  margin: 0 0 0.5rem;
+  line-height: 1.65;
+}
+
+.tutorial-actions {
+  justify-content: flex-end;
 }
 
 .install-banner {
@@ -246,14 +301,14 @@ a {
   position: relative;
   width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 0.9rem 1rem calc(0.9rem + 76px);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.9rem 1rem;
 }
 
 .main-review {
-  height: calc(100dvh - 104px - 104px - env(safe-area-inset-bottom));
   min-height: 0;
   overflow: hidden;
-  padding-bottom: 0.35rem;
 }
 
 .panel,
@@ -460,7 +515,7 @@ a {
 }
 
 .chats-screen {
-  height: calc(100dvh - 178px - env(safe-area-inset-bottom));
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -659,7 +714,7 @@ a {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 0.12rem;
+  padding: 0 0.12rem 0.45rem 0;
 }
 
 .chat-list-item {
@@ -857,7 +912,8 @@ a {
 }
 
 .chat-page {
-  min-height: calc(100dvh - 148px);
+  height: 100%;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
@@ -945,7 +1001,7 @@ a {
 
 .settings-layout {
   min-height: 0;
-  height: calc(100dvh - 160px - env(safe-area-inset-bottom));
+  height: 100%;
   overflow: hidden;
   grid-template-rows: auto auto minmax(0, 1fr);
 }
@@ -1167,12 +1223,12 @@ a {
   min-height: 0;
   box-sizing: border-box;
   padding-right: 0.15rem;
-  padding-bottom: calc(7.25rem + env(safe-area-inset-bottom));
+  padding-bottom: 0.6rem;
   height: auto;
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-padding-bottom: calc(7.25rem + env(safe-area-inset-bottom));
+  scroll-padding-bottom: 0.6rem;
   scroll-behavior: auto;
   align-content: start;
   grid-auto-rows: max-content;
@@ -1265,7 +1321,8 @@ a {
   top: 1rem;
   align-self: start;
   width: 58px;
-  min-height: min(520px, calc(100dvh - 230px));
+  height: min(500px, 100%);
+  min-height: 0;
   display: grid;
   justify-items: center;
   gap: 0;
@@ -1277,13 +1334,13 @@ a {
 .alphabet-rail button {
   width: 1.1rem;
   min-width: 1.1rem;
-  min-height: 1rem;
+  min-height: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--coral-deep);
   padding: 0;
-  font-size: 0.66rem;
+  font-size: clamp(0.48rem, 1.6dvh, 0.66rem);
   line-height: 1;
   font-weight: 700;
 }
@@ -1498,7 +1555,7 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .main {
-    padding: 0.75rem 0.85rem calc(0.8rem + 78px);
+    padding: 0.75rem 0.85rem;
   }
 
   .panel {
@@ -1526,11 +1583,6 @@ input[type="range"]::-moz-range-thumb {
   .composer {
     bottom: 0;
     padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
-  }
-
-  .chat-page {
-    height: calc(100dvh - 154px - env(safe-area-inset-bottom));
-    min-height: 0;
   }
 
   .news-scroll {
@@ -1569,16 +1621,13 @@ input[type="range"]::-moz-range-thumb {
 
   .alphabet-rail {
     width: 42px;
-    min-height: min(500px, calc(100dvh - 220px));
-  }
-
-  .alphabet-rail {
-    top: 66px;
+    height: 100%;
+    top: 0;
   }
 
   .alphabet-rail button {
-    min-height: 0.88rem;
-    font-size: 0.58rem;
+    min-height: 0;
+    font-size: clamp(0.46rem, 1.52dvh, 0.58rem);
   }
 
   .compact-vocab {
