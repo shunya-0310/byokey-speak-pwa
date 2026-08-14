@@ -85,6 +85,7 @@ const TUTORIAL_TARGETS = {
   progressAnalysis: "progress_analysis",
   progressPractice: "progress_practice",
   settingsApiKey: "settings_api_key",
+  settingsApiKeyInput: "settings_api_key_input",
   settingsHelp: "settings_help",
   settingsCoach: "settings_coach",
   settingsCefr: "settings_cefr",
@@ -188,8 +189,8 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     kind: "settings",
     title: "API Key",
-    message: "ここにAPIキーを入力し、利用するモデルを選びます。APIキーはBYOKey Labのサーバーには送られず、このブラウザ内またはセッション内に保存されます。",
-    targetId: TUTORIAL_TARGETS.settingsApiKey,
+    message: "ここにGemini APIキーを入力します。APIキーはBYOKey Labのサーバーには送られず、このブラウザ内またはセッション内に保存されます。",
+    targetId: TUTORIAL_TARGETS.settingsApiKeyInput,
     tab: "settings",
     settingsSection: "system"
   },
@@ -204,7 +205,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     kind: "settings",
     title: "レベル、コーチ設定",
-    message: "会話レベルやコーチの話し方は「レベル、コーチ設定」で変更できます。次へ進むと、この画面へ切り替わります。",
+    message: "会話レベルやコーチの話し方は「レベル、コーチ設定」で変更できます。",
     targetId: TUTORIAL_TARGETS.settingsCoach,
     tab: "settings",
     settingsSection: "coach"
@@ -1631,7 +1632,7 @@ function SettingsTab(props: {
               <option value="persistent">このブラウザに保存</option>
               <option value="session">このセッションだけ</option>
             </select>
-            <input type="password" autoComplete="off" value={props.apiKeyDraft} onChange={(event) => props.setApiKeyDraft(event.target.value)} placeholder={props.settings.hasApiKey ? "ブラウザに保存済み" : "Gemini API key"} />
+            <input data-tutorial-id={TUTORIAL_TARGETS.settingsApiKeyInput} type="password" autoComplete="off" value={props.apiKeyDraft} onChange={(event) => props.setApiKeyDraft(event.target.value)} placeholder={props.settings.hasApiKey ? "ブラウザに保存済み" : "Gemini API key"} />
           </div>
           <div className="row">
             <button className="primary" onClick={props.onSaveApiKey}>保存</button>
