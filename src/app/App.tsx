@@ -60,6 +60,7 @@ import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBa
 import { generateWithGemini, parseAnalysis, parseCoachReply, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
+import { trackAnalyticsEvent } from "../infrastructure/analytics";
 import { canRecognizeSpeech, listenOnce, speakCoachText, stopSpeaking } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
@@ -457,9 +458,20 @@ export default function App() {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
       setInstallBannerDismissed(false);
+      trackAnalyticsEvent("pwa_install_prompt_available");
     };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      setInstallPrompt(null);
+      setInstallBannerDismissed(true);
+      trackAnalyticsEvent("pwa_installed");
+    };
+    window.addEventListener("appinstalled", handler);
+    return () => window.removeEventListener("appinstalled", handler);
   }, []);
 
   useEffect(() => {
@@ -803,6 +815,7 @@ export default function App() {
               ? <button className="primary" onClick={async () => {
                   await installPrompt.prompt();
                   const choice = await installPrompt.userChoice;
+                  trackAnalyticsEvent("pwa_install_prompt_choice", { outcome: choice.outcome });
                   if (choice.outcome === "accepted") setInstallPrompt(null);
                 }}>インストール</button>
               : <span className="small muted">ブラウザメニューから「ホーム画面に追加」を選んでください。</span>}

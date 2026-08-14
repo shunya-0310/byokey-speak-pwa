@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://speak.byokey-lab.com/sitemap.xml
