@@ -23,8 +23,7 @@ async function checkViewport(contextOptions) {
     });
     page.setDefaultTimeout(10000);
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-    await page.waitForFunction(() => document.body.innerText.includes("BYOKey Speakへようこそ") || document.body.innerText.includes("New Chatです。") || document.body.innerText.includes("TODAY'S WORLD"), null, { timeout: 15000 });
-    const bodyText = await page.locator("body").innerText().catch(() => "");
+    const bodyText = await waitForInitialAppText(page, pageErrors);
     const titleVisible = bodyText.includes("BYOKey Speak");
     const onboardingVisible = bodyText.includes("BYOKey Speakへようこそ");
     const shellVisible = bodyText.includes("New Chatです。") || bodyText.includes("TODAY'S WORLD");
@@ -66,6 +65,25 @@ async function checkViewport(contextOptions) {
   } finally {
     await browser.close();
   }
+}
+
+async function waitForInitialAppText(page, pageErrors) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 });
+    try {
+      await page.waitForFunction(() => {
+        const text = document.body?.innerText ?? "";
+        return text.includes("BYOKey Speakへようこそ") || text.includes("New Chatです。") || text.includes("TODAY'S WORLD");
+      }, null, { timeout: 15000 });
+      const bodyText = await page.locator("body").innerText().catch(() => "");
+      if (bodyText.includes("BYOKey Speakへようこそ") || bodyText.includes("New Chatです。") || bodyText.includes("TODAY'S WORLD")) return bodyText;
+    } catch {
+      // The Windows/Chromium smoke check can occasionally observe an empty body immediately after Vite preview starts.
+      // Retry once with a reload before reporting a real UI failure.
+    }
+  }
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  throw new Error(`Initial app UI was not visible.\nPage errors: ${pageErrors.join(" | ")}\nBody: ${bodyText.slice(0, 500)}`);
 }
 
 const server = await preview({

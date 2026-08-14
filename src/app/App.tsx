@@ -506,7 +506,7 @@ export default function App() {
   const chatMessages = currentData.messages.filter((message) => message.chatId === activeChatId);
   const progress = localProgress(currentData.stats, currentData.messages, currentData.vocab);
   const canSendToGemini = currentData.settings.consentVersion >= 1 && currentData.settings.hasApiKey;
-  const showInstallBanner = !installBannerDismissed && !isStandaloneDisplay();
+  const showInstallBanner = !installBannerDismissed && !isStandaloneDisplay() && tutorialStep === null;
 
   function handleGlobalInteractionSound(event: React.PointerEvent<HTMLDivElement>) {
     const target = event.target instanceof Element ? event.target : null;
