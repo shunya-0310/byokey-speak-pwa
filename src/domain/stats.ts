@@ -1,7 +1,37 @@
 import type { ChatMessage, DailyStat, VocabCard } from "./models";
 
-export function todayEpochDay(now = Date.now()) {
-  return Math.floor(now / 86_400_000);
+export const MS_PER_DAY = 86_400_000;
+
+export interface VocabularyHistoryPoint {
+  epochDay: number;
+  count: number;
+}
+
+export interface CalendarCell {
+  day: number | null;
+  epochDay: number | null;
+}
+
+export function localEpochDay(input: Date | number = new Date()) {
+  const date = typeof input === "number" ? new Date(input) : input;
+  return epochDayFromYmd(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+export function todayEpochDay(now: Date | number = new Date()) {
+  return localEpochDay(now);
+}
+
+export function epochDayFromYmd(year: number, monthIndex: number, day: number) {
+  return Math.floor(Date.UTC(year, monthIndex, day) / MS_PER_DAY);
+}
+
+export function ymdFromEpochDay(epochDay: number) {
+  const date = new Date(epochDay * MS_PER_DAY);
+  return {
+    year: date.getUTCFullYear(),
+    monthIndex: date.getUTCMonth(),
+    day: date.getUTCDate()
+  };
 }
 
 export function streak(studyDays: Set<number>, today = todayEpochDay()) {
@@ -33,7 +63,7 @@ export function naturalReplyOf(text: string) {
 }
 
 export function localProgress(stats: DailyStat[], messages: ChatMessage[], vocab: VocabCard[]) {
-  const studyDays = new Set(stats.filter((item) => item.turns > 0 || item.assistUses > 0 || item.reviewsDone > 0).map((item) => item.epochDay));
+  const studyDays = new Set(stats.filter((item) => item.turns > 0).map((item) => item.epochDay));
   const userMessages = messages.filter((message) => message.role === "user");
   return {
     streak: streak(studyDays),
@@ -45,6 +75,70 @@ export function localProgress(stats: DailyStat[], messages: ChatMessage[], vocab
     reviewedCount: vocab.filter((item) => item.reviewed).length,
     averageUserLength: userMessages.length ? Math.round(userMessages.reduce((sum, item) => sum + item.text.length, 0) / userMessages.length) : 0
   };
+}
+
+export function studyDaySet(stats: DailyStat[]) {
+  return new Set(stats.filter((item) => item.turns > 0).map((item) => item.epochDay));
+}
+
+export function buildMonthCalendar(year: number, monthIndex: number): CalendarCell[] {
+  const firstWeekday = new Date(Date.UTC(year, monthIndex, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const cells: CalendarCell[] = [
+    ...Array.from({ length: firstWeekday }, () => ({ day: null, epochDay: null }))
+  ];
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push({ day, epochDay: epochDayFromYmd(year, monthIndex, day) });
+  }
+  const trailing = (7 - (cells.length % 7)) % 7;
+  cells.push(...Array.from({ length: trailing }, () => ({ day: null, epochDay: null })));
+  return cells;
+}
+
+export function canMoveToNextMonth(year: number, monthIndex: number, today = new Date()) {
+  const nextYear = monthIndex === 11 ? year + 1 : year;
+  const nextMonthIndex = monthIndex === 11 ? 0 : monthIndex + 1;
+  return nextYear < today.getFullYear() || (nextYear === today.getFullYear() && nextMonthIndex <= today.getMonth());
+}
+
+export function buildVocabularyHistory(vocab: VocabCard[], today = todayEpochDay()): VocabularyHistoryPoint[] {
+  if (!vocab.length) return [];
+  const additions = new Map<number, number>();
+  for (const card of vocab) {
+    const day = localEpochDay(card.createdAt);
+    additions.set(day, (additions.get(day) ?? 0) + 1);
+  }
+  const firstDay = Math.min(...additions.keys());
+  const lastDay = Math.max(firstDay, today);
+  let cumulative = 0;
+  const points: VocabularyHistoryPoint[] = [];
+  for (let day = firstDay; day <= lastDay; day += 1) {
+    cumulative += additions.get(day) ?? 0;
+    points.push({ epochDay: day, count: cumulative });
+  }
+  return points;
+}
+
+export function niceVocabularyAxisMax(maxCount: number) {
+  if (maxCount <= 0) return 4;
+  const unit = maxCount <= 20 ? 4 : maxCount <= 100 ? 20 : maxCount <= 250 ? 40 : maxCount <= 500 ? 100 : 200;
+  return Math.max(unit, Math.ceil(maxCount / unit) * unit);
+}
+
+export function vocabularyChartXIndexes(length: number) {
+  if (length <= 0) return [];
+  if (length <= 5) return Array.from({ length }, (_, index) => index);
+  const last = length - 1;
+  return Array.from(new Set([0, Math.floor(last * 0.25), Math.floor(last * 0.5), Math.floor(last * 0.75), last]));
+}
+
+export function formatVocabularyGraphDate(epochDay: number, firstEpochDay: number, lastEpochDay: number) {
+  const current = ymdFromEpochDay(epochDay);
+  const first = ymdFromEpochDay(firstEpochDay);
+  const last = ymdFromEpochDay(lastEpochDay);
+  if (first.year !== last.year) return `${String(current.year % 100).padStart(2, "0")}/${String(current.monthIndex + 1).padStart(2, "0")}`;
+  if (lastEpochDay - firstEpochDay > 120) return `${current.monthIndex + 1}月`;
+  return `${current.monthIndex + 1}/${current.day}`;
 }
 
 export function normalizeVocabExpression(expression: string) {

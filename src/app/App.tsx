@@ -8,6 +8,7 @@ import {
   Headphones,
   KeyRound,
   Loader2,
+  Maximize2,
   MessageCircle,
   Mic,
   MoreVertical,
@@ -26,6 +27,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BUILD_INFO, LINKS } from "./links";
+import { StudyCalendarBottomSheet, VocabularyHistoryBottomSheet } from "./ProgressDetails";
+import { SplashOverlay } from "./SplashOverlay";
 import {
   GEMINI_MODELS,
   type AppSettings,
@@ -856,7 +859,7 @@ export default function App() {
           }}
         />}
         {activeTab === "review" && <ReviewTab vocab={data.vocab} messages={data.messages} onReload={reload} />}
-        {activeTab === "progress" && <ProgressTab progress={progress} analyses={data.analyses} canAnalyze={canSendToGemini} onAnalyze={async () => {
+        {activeTab === "progress" && <ProgressTab progress={progress} stats={data.stats} vocab={data.vocab} analyses={data.analyses} canAnalyze={canSendToGemini} onAnalyze={async () => {
           const userMessages = data.messages.filter((message) => message.role === "user");
           if (userMessages.length < 20) {
             setError(`会話分析にはあと${20 - userMessages.length}発話必要です。`);
@@ -996,18 +999,6 @@ export default function App() {
 
 function TabButton(props: { tab: Tab; active: Tab; setActive: (tab: Tab) => void; icon: React.ReactNode; label: string }) {
   return <button aria-current={props.active === props.tab ? "page" : undefined} onClick={() => props.setActive(props.tab)}>{props.icon}<span>{props.label}</span></button>;
-}
-
-function SplashOverlay(props: { onFinished: () => void }) {
-  useEffect(() => {
-    const timer = window.setTimeout(props.onFinished, 1000);
-    return () => window.clearTimeout(timer);
-  }, [props.onFinished]);
-  return <div className="splash-overlay" aria-label="BYOKey Speak loading">
-    <div className="splash-logo-wrap" aria-hidden="true">
-      <img src="/images/splash_logo.webp" alt="" />
-    </div>
-  </div>;
 }
 
 function TutorialOverlay(props: {
@@ -1340,8 +1331,11 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
   const [sort, setSort] = useState<"date" | "alphabet" | "frequency" | "favorite">("alphabet");
   const [showAdd, setShowAdd] = useState(false);
   const [activeRail, setActiveRail] = useState<{ letter: string; y: number } | null>(null);
+  const [requestedLetter, setRequestedLetter] = useState<{ letter: string; behavior: ScrollBehavior } | null>(null);
   const [selectedQuickAssist, setSelectedQuickAssist] = useState<VocabCard | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const lastRailLetterRef = useRef<string | null>(null);
   const cardsWithUsage = countActiveVocabularyUse(props.messages, props.vocab);
   const collectionCards = cardsWithUsage.filter((card) => collection === "quickAssist" ? card.source === "QuickAssist" : card.source !== "QuickAssist");
   const effectiveSort = collection === "quickAssist" && sort === "frequency" ? "date" : sort;
@@ -1357,25 +1351,51 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
     return (card.expression.trim().match(/[A-Za-z]/)?.[0] ?? "").toUpperCase();
   }
 
-  function scrollToLetter(letter: string, behavior: ScrollBehavior = "auto") {
-    setSort("alphabet");
-    const target = sortedCards.find((card) => cardLetter(card) >= letter) ?? sortedCards.find((card) => cardLetter(card));
+  useEffect(() => {
+    setRequestedLetter(null);
+    setActiveRail(null);
+    lastRailLetterRef.current = null;
+    listRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [collection]);
+
+  useEffect(() => {
+    if (!requestedLetter || effectiveSort !== "alphabet") return;
+    const target = sortedCards.find((card) => cardLetter(card) >= requestedLetter.letter) ?? sortedCards.find((card) => cardLetter(card));
     if (!target) return;
-    window.requestAnimationFrame(() => {
+    const frame = window.requestAnimationFrame(() => {
       const container = listRef.current;
       const element = document.getElementById(`vocab-card-${target.id}`);
       if (!container || !element) return;
-      container.scrollTo({ top: element.offsetTop - container.offsetTop, behavior });
+      const targetTop = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+      container.scrollTo({ top: targetTop, behavior: requestedLetter.behavior });
     });
+    return () => window.cancelAnimationFrame(frame);
+  }, [requestedLetter, effectiveSort, sortedCards]);
+
+  function requestLetterScroll(letter: string, behavior: ScrollBehavior = "auto") {
+    setSort("alphabet");
+    setRequestedLetter({ letter, behavior });
   }
 
-  function scrubAlphabet(event: React.PointerEvent<HTMLDivElement>) {
+  function scrubAlphabet(event: React.PointerEvent<HTMLDivElement>, behavior: ScrollBehavior = "auto") {
     const rect = event.currentTarget.getBoundingClientRect();
     const y = Math.min(rect.height, Math.max(0, event.clientY - rect.top));
     const ratio = Math.min(0.999, Math.max(0, y / rect.height));
     const letter = alphabet[Math.floor(ratio * alphabet.length)];
     setActiveRail({ letter, y });
-    scrollToLetter(letter);
+    if (lastRailLetterRef.current === letter) return;
+    lastRailLetterRef.current = letter;
+    requestLetterScroll(letter, behavior);
+  }
+
+  function clearAlphabetPointer(event: React.PointerEvent<HTMLDivElement>) {
+    if (activePointerIdRef.current !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    activePointerIdRef.current = null;
+    lastRailLetterRef.current = null;
+    setActiveRail(null);
   }
 
   return <div className="grid review-layout">
@@ -1445,17 +1465,25 @@ function ReviewTab(props: { vocab: VocabCard[]; messages: ChatMessage[]; onReloa
           aria-label="Alphabet quick scroll"
           tabIndex={0}
           onPointerDown={(event) => {
+            event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
+            activePointerIdRef.current = event.pointerId;
+            lastRailLetterRef.current = null;
             scrubAlphabet(event);
           }}
           onPointerMove={(event) => {
-            if (event.buttons) scrubAlphabet(event);
+            if (activePointerIdRef.current === event.pointerId) scrubAlphabet(event);
           }}
-          onPointerUp={() => setActiveRail(null)}
-          onPointerCancel={() => setActiveRail(null)}
+          onPointerUp={clearAlphabetPointer}
+          onPointerCancel={clearAlphabetPointer}
+          onLostPointerCapture={() => {
+            activePointerIdRef.current = null;
+            lastRailLetterRef.current = null;
+            setActiveRail(null);
+          }}
         >
           {activeRail && <span className="alphabet-bubble" style={{ top: activeRail.y }}>{activeRail.letter}</span>}
-          {alphabet.map((letter) => <button className={collectionCards.some((card) => cardLetter(card) === letter) ? "" : "dim"} key={letter} onClick={() => scrollToLetter(letter, "smooth")}>{letter}</button>)}
+          {alphabet.map((letter) => <button className={collectionCards.some((card) => cardLetter(card) === letter) ? "" : "dim"} key={letter} onClick={() => requestLetterScroll(letter, "smooth")}>{letter}</button>)}
         </div>}
       </div>
     </section>
@@ -1483,9 +1511,10 @@ function usageTier(usageCount: number) {
   return "1";
 }
 
-function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analyses: ConversationAnalysis[]; canAnalyze: boolean; onAnalyze: () => void; onPractice: (prompt: string) => void }) {
+function ProgressTab(props: { progress: ReturnType<typeof localProgress>; stats: DailyStat[]; vocab: VocabCard[]; analyses: ConversationAnalysis[]; canAnalyze: boolean; onAnalyze: () => void; onPractice: (prompt: string) => void }) {
   const latest = props.analyses[0];
   const weekLabels = ["木", "金", "土", "日", "月", "火", "水"];
+  const [detail, setDetail] = useState<"calendar" | "vocabulary" | null>(null);
   return <div className="stack">
     <div className="screen-heading"><h2>✦ Progress</h2></div>
     <section className="panel progress-panel stack">
@@ -1500,9 +1529,9 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analys
         </div>
       </div>
       <div className="metric-grid">
-        <Metric label="累計学習日" value={`${props.progress.studyDays}日`} />
+        <Metric label="累計学習日" value={`${props.progress.studyDays}日`} onClick={() => setDetail("calendar")} />
         <Metric label="累計ターン" value={`${props.progress.userTurns}`} />
-        <Metric label="単語帳のカード" value={`${props.progress.savedExpressions}`} />
+        <Metric label="ボキャブラリー" value={`${props.progress.savedExpressions}`} onClick={() => setDetail("vocabulary")} />
         <Metric label="お気に入り ★" value={`${props.progress.favoriteCount}`} />
       </div>
     </section>
@@ -1527,11 +1556,21 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; analys
         <div data-tutorial-id={TUTORIAL_TARGETS.progressPractice} className="row">{latest.result.practicePrompts.slice(0, 3).map((prompt) => <button key={prompt} onClick={() => props.onPractice(prompt)}>{prompt}</button>)}</div>
       </>}
     </section>
+    {detail === "calendar" && <StudyCalendarBottomSheet stats={props.stats} onDismiss={() => setDetail(null)} />}
+    {detail === "vocabulary" && <VocabularyHistoryBottomSheet vocab={props.vocab} onDismiss={() => setDetail(null)} />}
   </div>;
 }
 
-function Metric(props: { label: string; value: string }) {
-  return <div className="card"><p className="small muted">{props.label}</p><strong>{props.value}</strong></div>;
+function Metric(props: { label: string; value: string; onClick?: () => void }) {
+  const content = <>
+    {props.onClick && <Maximize2 className="metric-detail-icon" size={15} aria-hidden="true" />}
+    <p className="small muted">{props.label}</p>
+    <strong>{props.value}</strong>
+  </>;
+  if (props.onClick) {
+    return <button className="card metric-card-action" type="button" onClick={props.onClick} aria-label={`${props.label}の詳細を開く`}>{content}</button>;
+  }
+  return <div className="card">{content}</div>;
 }
 
 function ProfileList(props: { title: string; items: string[] }) {

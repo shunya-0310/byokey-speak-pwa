@@ -9,7 +9,7 @@ import {
   type LearningNote,
   type VocabCard
 } from "../domain/models";
-import { normalizeVocabDisplayExpression, normalizeVocabExpression } from "../domain/stats";
+import { localEpochDay, normalizeVocabDisplayExpression, normalizeVocabExpression } from "../domain/stats";
 
 export class ByokeyDb extends Dexie {
   settings!: Table<{ id: "settings"; value: AppSettings }, "settings">;
@@ -73,7 +73,7 @@ export function createChat(title = "New chat", origin: Chat["origin"] = "FREE_CH
 }
 
 export async function recordDailyStat(patch: Partial<Omit<DailyStat, "epochDay">>) {
-  const epochDay = Math.floor(Date.now() / 86_400_000);
+  const epochDay = localEpochDay();
   const current = await db.dailyStats.get(epochDay) ?? { epochDay, turns: 0, assistUses: 0, notesSaved: 0, reviewsDone: 0 };
   await db.dailyStats.put({
     ...current,
@@ -110,8 +110,7 @@ export async function saveVocabCard(input: { expression: string; meaning: string
   const patch: Partial<VocabCard> = {
     expression,
     source: existing.source === "QuickAssist" ? "QuickAssist" : input.source,
-    chatId: existing.chatId ?? input.chatId,
-    createdAt: Math.max(existing.createdAt, Date.now())
+    chatId: existing.chatId ?? input.chatId
   };
   if (!existing.meaning && meaning) patch.meaning = meaning;
   await db.vocabCards.update(existing.id, patch);
