@@ -784,20 +784,22 @@ export default function App() {
         <h1>BYOKey Speak</h1>
         <div className="hero-rule"><span>✦</span></div>
       </header>
-      {showInstallBanner && <section className="install-banner" aria-live="polite">
-        <div>
-          <strong>ホーム画面にインストール</strong>
-          <p>BYOKey Speakはインストールして使うと、アプリ版に近い表示で起動できます。</p>
-        </div>
-        <div className="row nowrap">
-          {installPrompt
-            ? <button className="primary" onClick={async () => {
-                await installPrompt.prompt();
-                const choice = await installPrompt.userChoice;
-                if (choice.outcome === "accepted") setInstallPrompt(null);
-              }}>インストール</button>
-            : <span className="small muted">ブラウザメニューから「ホーム画面に追加」を選んでください。</span>}
-          <button className="icon-button ghost" title="閉じる" onClick={() => { localStorage.setItem("byokey-install-banner-dismissed", "1"); setInstallBannerDismissed(true); }}>×</button>
+      {showInstallBanner && <section className="install-prompt-layer" aria-live="polite">
+        <div className="install-prompt-dialog" role="dialog" aria-modal="false" aria-labelledby="install-prompt-title">
+          <div>
+            <strong id="install-prompt-title">ホーム画面にインストール</strong>
+            <p>BYOKey Speakはインストールして使うと、アプリ版に近い表示で起動できます。</p>
+          </div>
+          <div className="row nowrap">
+            {installPrompt
+              ? <button className="primary" onClick={async () => {
+                  await installPrompt.prompt();
+                  const choice = await installPrompt.userChoice;
+                  if (choice.outcome === "accepted") setInstallPrompt(null);
+                }}>インストール</button>
+              : <span className="small muted">ブラウザメニューから「ホーム画面に追加」を選んでください。</span>}
+            <button className="icon-button ghost" title="閉じる" onClick={() => { localStorage.setItem("byokey-install-banner-dismissed", "1"); setInstallBannerDismissed(true); }}>×</button>
+          </div>
         </div>
       </section>}
       {isPreviewOrigin() && <div className="preview-banner small">プレビュー環境です。個人の本番APIキーを入力しないでください。</div>}
@@ -1022,7 +1024,7 @@ function TutorialOverlay(props: {
         setTargetRect(null);
         return;
       }
-      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      target.scrollIntoView({ block: "center", inline: "nearest" });
       window.requestAnimationFrame(() => setTargetRect(target.getBoundingClientRect()));
     }
     update();
@@ -1047,7 +1049,7 @@ function TutorialOverlay(props: {
   const frame = targetRect ? paddedFrame(targetRect, 8) : null;
   const calloutTop = (() => {
     const edge = 16;
-    const gap = 14;
+    const gap = 30;
     if (!frame || !calloutHeight) return "50%";
     if (frame.bottom + gap + calloutHeight <= window.innerHeight - edge) return `${frame.bottom + gap}px`;
     return `${Math.max(edge, frame.top - gap - calloutHeight)}px`;
