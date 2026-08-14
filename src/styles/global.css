@@ -446,6 +446,13 @@ a {
   background: color-mix(in srgb, var(--gold) 28%, transparent);
 }
 
+.icon-button.ghost.web-search-button.active {
+  color: var(--parchment-light);
+  border-color: var(--coral-deep);
+  background: linear-gradient(180deg, var(--coral), var(--coral-deep));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 42%, transparent), 0 8px 18px rgba(89, 25, 24, 0.24);
+}
+
 .primary {
   background: linear-gradient(180deg, var(--gold), var(--gold-dark));
   color: #1d1506;

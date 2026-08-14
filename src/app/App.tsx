@@ -577,6 +577,14 @@ export default function App() {
     setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : "Voice Mode: フルオート");
   }
 
+  function toggleWebSearch() {
+    setWebSearch((enabled) => {
+      const next = !enabled;
+      setNotice(next ? "Web検索オン: 検索を伴うチャットを行います。" : "Web検索オフ: 通常のチャットに戻します。");
+      return next;
+    });
+  }
+
   function stopCurrentSpeech() {
     stopSpeaking();
     setSpeakingMessageId(null);
@@ -820,7 +828,7 @@ export default function App() {
           setDraftFromUser={updateDraftFromUser}
           settings={data.settings}
           webSearch={webSearch}
-          setWebSearch={setWebSearch}
+          onWebSearchToggle={toggleWebSearch}
           page={chatPage}
           canUndoDraft={draftUndoStack.length > 0}
           speakingMessageId={speakingMessageId}
@@ -1133,7 +1141,7 @@ function ChatsTab(props: {
   setDraftFromUser: (value: string) => void;
   settings: AppSettings;
   webSearch: boolean;
-  setWebSearch: (value: boolean) => void;
+  onWebSearchToggle: () => void;
   page: ChatPage;
   canUndoDraft: boolean;
   speakingMessageId: string | null;
@@ -1209,7 +1217,13 @@ function ChatsTab(props: {
             {props.settings.voiceMode !== "off" && <span className="mode-badge">{props.settings.voiceMode === "manual" ? "→" : "⇔"}</span>}
           </button>
           <button data-tutorial-id={TUTORIAL_TARGETS.chatQuickAssist} className="icon-button ghost" title="Quick Assist" onClick={props.onAssist}><Sparkles size={20} /></button>
-          <button data-tutorial-id={TUTORIAL_TARGETS.chatWebSearch} className={`icon-button ghost ${props.webSearch ? "active" : ""}`} title="Web検索" onClick={() => props.setWebSearch(!props.webSearch)}><Globe2 size={20} /></button>
+          <button
+            data-tutorial-id={TUTORIAL_TARGETS.chatWebSearch}
+            className={`icon-button ghost web-search-button ${props.webSearch ? "active" : ""}`}
+            title={props.webSearch ? "Web検索オン" : "Web検索オフ"}
+            aria-pressed={props.webSearch}
+            onClick={props.onWebSearchToggle}
+          ><Globe2 size={20} /></button>
           <button className="icon-button ghost" title="入力をひとつ戻す" disabled={!props.canUndoDraft} onClick={props.onUndo}><Undo2 size={20} /></button>
         </div>
         <div className="composer-input-row">
