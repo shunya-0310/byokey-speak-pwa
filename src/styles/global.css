@@ -58,6 +58,7 @@ select {
   background: color-mix(in srgb, var(--parchment-light) 88%, #000);
   color: var(--ink);
   padding: 0.58rem 0.68rem;
+  font-style: normal;
 }
 
 textarea {
@@ -868,7 +869,6 @@ a {
   min-height: 54px;
   max-height: 132px;
   border-width: 2px;
-  font-style: italic;
   line-height: 1.45;
   overflow: auto;
   field-sizing: content;

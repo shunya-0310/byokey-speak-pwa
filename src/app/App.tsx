@@ -862,7 +862,7 @@ export default function App() {
           }}
           onSend={() => sendMessage()}
           onUndo={undoDraftInput}
-          onAssist={() => setAssist({ open: true, stuck: "", suggestions: [] })}
+          onAssist={() => setAssist((current) => ({ ...current, open: true }))}
           onVoiceModeCycle={cycleVoiceMode}
           onTranslate={translateMessage}
           onReport={reportMessage}
@@ -1005,7 +1005,7 @@ export default function App() {
         adopt={async (english) => {
           appendToDraft(english, "QUICK_ASSIST");
           await saveVocabCard({ expression: english, meaning: assist.suggestions.find((item) => item.english === english)?.note ?? "", source: "QuickAssist", chatId: activeChatId });
-          setAssist({ open: false, stuck: "", suggestions: [] });
+          setAssist((current) => ({ ...current, open: false }));
           await reload();
         }}
         onMic={async () => {
@@ -1629,6 +1629,7 @@ function SettingsTab(props: {
 }) {
   const section = props.section;
   const setSection = props.setSection;
+  const [coachSkillsDraft, setCoachSkillsDraft] = useState(props.settings.coachSkills);
   const selectedCefrGuide = CEFR_GUIDE.find((item) => item.level === props.settings.englishLevel) ?? CEFR_GUIDE[0];
   const sections: Array<{ id: SettingsSection; label: string }> = [
     { id: "system", label: "システム設定" },
@@ -1638,6 +1639,15 @@ function SettingsTab(props: {
     { id: "help", label: "ヘルプ" },
     { id: "about", label: "About" }
   ];
+  useEffect(() => {
+    setCoachSkillsDraft(props.settings.coachSkills);
+  }, [props.settings.coachSkills]);
+
+  function commitCoachSkillsDraft() {
+    if (coachSkillsDraft === props.settings.coachSkills) return;
+    props.onSettings({ coachSkills: coachSkillsDraft });
+  }
+
   return <div className="stack settings-layout">
     <div className="screen-heading"><h2>✦ Settings</h2></div>
     <div className="settings-tabs" role="tablist" aria-label="Settings sections">
@@ -1706,7 +1716,7 @@ function SettingsTab(props: {
             <div><p>{selectedCefrGuide.overview}</p><p className="small muted">出力の目安：{selectedCefrGuide.output}</p></div>
           </div>
         </article>
-        <label data-tutorial-id={TUTORIAL_TARGETS.settingsCoachSkill}>Coach Skills<textarea rows={10} value={props.settings.coachSkills} onChange={(event) => props.onSettings({ coachSkills: event.target.value })} /></label>
+        <label data-tutorial-id={TUTORIAL_TARGETS.settingsCoachSkill}>Coach Skills<textarea rows={10} value={coachSkillsDraft} onChange={(event) => setCoachSkillsDraft(event.target.value)} onBlur={commitCoachSkillsDraft} /></label>
         <InlineStatus status={props.status} section="coach" />
         <InlineStatus status={props.status} section="conversation" />
       </div>}
@@ -1791,14 +1801,20 @@ function renderTextWithCompactLinks(text: string) {
 
 function AssistModal(props: {
   assist: { open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> };
-  setAssist: (value: { open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> }) => void;
+  setAssist: React.Dispatch<React.SetStateAction<{ open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> }>>;
   runAssist: () => void;
   adopt: (english: string) => void;
   onMic: () => void;
 }) {
   return <div className="modal-backdrop">
     <section className="modal stack">
-      <div className="section-title"><h2>Quick Assist</h2><button className="icon-button ghost" onClick={() => props.setAssist({ open: false, stuck: "", suggestions: [] })}>×</button></div>
+      <div className="section-title">
+        <h2>Quick Assist</h2>
+        <div className="row nowrap">
+          <button className="icon-button ghost" title="新規" onClick={() => props.setAssist({ open: true, stuck: "", suggestions: [] })}><Plus size={18} /></button>
+          <button className="icon-button ghost" title="閉じる" onClick={() => props.setAssist((current) => ({ ...current, open: false }))}>×</button>
+        </div>
+      </div>
       <textarea rows={3} value={props.assist.stuck} onChange={(event) => props.setAssist({ ...props.assist, stuck: event.target.value })} placeholder="日本語でも英語でも、言いたいことを書いてください。" />
       <div className="row">
         <button className="primary" onClick={props.runAssist}><Sparkles size={15} /> 候補を出す</button>
