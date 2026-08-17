@@ -75,6 +75,59 @@ export async function generateWithGemini(input: {
   };
 }
 
+export async function transcribeAudioWithGemini(input: {
+  apiKey: string;
+  model: string;
+  audio: Blob;
+  language: "ja-JP" | "en-US";
+}) {
+  if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
+  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-lite";
+  const languageLabel = input.language === "ja-JP" ? "Japanese" : "English";
+  const body = {
+    contents: [{
+      parts: [
+        {
+          text: [
+            `Transcribe the spoken ${languageLabel} in this audio.`,
+            "Return only the transcript text.",
+            "Do not translate, explain, summarize, add punctuation unless it is clearly spoken, or wrap the answer in quotes.",
+            "If no speech is audible, return an empty string."
+          ].join("\n")
+        },
+        {
+          inlineData: {
+            mimeType: input.audio.type || "audio/wav",
+            data: await blobToBase64(input.audio)
+          }
+        }
+      ]
+    }]
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": input.apiKey
+      },
+      body: JSON.stringify(body),
+      cache: "no-store"
+    });
+  } catch {
+    throw new LlmError("network", userMessageForError("network"));
+  }
+
+  const raw = await response.text();
+  if (!response.ok) {
+    const kind = classifyGeminiError(response.status, raw);
+    throw new LlmError(kind, userMessageForError(kind));
+  }
+  return collectTexts(JSON.parse(raw)).trim().replace(/^["「]|["」]$/g, "");
+}
+
 export async function testGeminiConnection(apiKey: string, model: string) {
   const result = await generateWithGemini({ apiKey, model, prompt: "Reply with exactly: OK" });
   return result.text.toLowerCase().includes("ok");
@@ -141,4 +194,16 @@ function collectSources(value: unknown, output = new Map<string, LlmSource>()): 
     Object.values(record).forEach((child) => collectSources(child, output));
   }
   return [...output.values()].slice(0, 6);
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(new Error("音声データの変換に失敗しました。"));
+    reader.readAsDataURL(blob);
+  });
 }

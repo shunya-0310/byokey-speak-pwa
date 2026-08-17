@@ -57,11 +57,11 @@ import {
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
-import { generateWithGemini, parseAnalysis, parseCoachReply, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
-import { canRecognizeSpeech, listenOnce, speakCoachText, stopSpeaking } from "../infrastructure/speech";
+import { canRecordAudio, canRecognizeSpeech, listenOnce, shouldUseGeminiMicFallback, speakCoachText, startWavRecorder, stopSpeaking, type MicLanguage, type WavRecorder } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
@@ -323,6 +323,8 @@ export default function App() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("system");
   const [tutorialStep, setTutorialStep] = useState<number | null>(null);
   const [tutorialReplayMode, setTutorialReplayMode] = useState(false);
+  const [recordingMic, setRecordingMic] = useState<{ target: "chat" | "assist"; language: MicLanguage } | null>(null);
+  const wavRecorderRef = useRef<WavRecorder | null>(null);
   const [tutorialSeen, setTutorialSeen] = useState<Record<TutorialKind, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem(TUTORIAL_SEEN_KEY) ?? "{}") as Record<TutorialKind, boolean>;
@@ -582,6 +584,94 @@ export default function App() {
     setDraftSource(previous.trim() ? "TYPED" : "TYPED");
   }
 
+  async function transcribeRecordedAudio(target: "chat" | "assist", language: MicLanguage, audio: Blob) {
+    if (!canSendToGemini) {
+      setActiveTab("settings");
+      setError("Gemini文字起こしには、同意とAPIキー設定が必要です。");
+      return;
+    }
+    const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
+    if (!apiKey) {
+      setActiveTab("settings");
+      setError("APIキーを再入力してください。");
+      return;
+    }
+    setBusy("Geminiで音声を文字起こし中です");
+    try {
+      const spoken = await transcribeAudioWithGemini({ apiKey, model: currentData.settings.model, audio, language });
+      if (!spoken.trim()) {
+        setNotice("音声を認識できませんでした。もう一度お試しください。");
+        return;
+      }
+      if (target === "assist") {
+        setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
+      } else {
+        appendToDraft(spoken, "VOICE");
+      }
+      setNotice("音声を入力欄へ反映しました。");
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function stopGeminiMicRecording() {
+    const recording = recordingMic;
+    const recorder = wavRecorderRef.current;
+    if (!recording || !recorder) return;
+    setRecordingMic(null);
+    wavRecorderRef.current = null;
+    try {
+      const audio = await recorder.stop();
+      await transcribeRecordedAudio(recording.target, recording.language, audio);
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }
+
+  async function startGeminiMicRecording(target: "chat" | "assist", language: MicLanguage) {
+    if (!canRecordAudio()) {
+      setError("このブラウザではマイク録音を開始できません。OSキーボードの音声入力をご利用ください。");
+      return;
+    }
+    if (recordingMic) {
+      await stopGeminiMicRecording();
+      return;
+    }
+    try {
+      wavRecorderRef.current = await startWavRecorder();
+      setRecordingMic({ target, language });
+      setNotice("録音中です。もう一度マイクを押すと停止して文字起こしします。");
+    } catch (caught) {
+      setError(`マイク録音を開始できませんでした。iPhoneのSafari/サイト設定でマイク許可を確認してください。${(caught as Error).message ? ` ${(caught as Error).message}` : ""}`);
+    }
+  }
+
+  async function handleMicInput(target: "chat" | "assist", language: MicLanguage) {
+    if (recordingMic) {
+      await stopGeminiMicRecording();
+      return;
+    }
+    if (shouldUseGeminiMicFallback()) {
+      await startGeminiMicRecording(target, language);
+      return;
+    }
+    try {
+      const spoken = await listenOnce(language);
+      if (target === "assist") {
+        setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
+      } else {
+        appendToDraft(spoken, "VOICE");
+      }
+    } catch (caught) {
+      if (canRecordAudio()) {
+        setNotice("この環境では通常の音声認識が使えません。Gemini文字起こし録音に切り替えます。もう一度マイクを押して録音してください。");
+      }
+      setError((caught as Error).message);
+    }
+  }
+
   async function cycleVoiceMode() {
     const next = nextVoiceMode(currentData.settings.voiceMode);
     playSound("select");
@@ -616,6 +706,10 @@ export default function App() {
 
   async function startAutoEnglishMic(mode: AppSettings["voiceMode"], baseSource: ChatMessage["inputSource"] = "VOICE") {
     if (mode === "off") return;
+    if (shouldUseGeminiMicFallback()) {
+      setNotice("この環境では自動マイク開始に制限があります。英マイクを押して録音してください。");
+      return;
+    }
     try {
       const spoken = await listenOnce("en-US");
       if (mode === "fullAuto") {
@@ -868,18 +962,21 @@ export default function App() {
           onReport={reportMessage}
           onSpeak={(message) => speakMessage(message)}
           onStopSpeak={stopCurrentSpeech}
+          recordingMic={recordingMic?.target === "chat" ? recordingMic.language : null}
+          micAvailable={canRecognizeSpeech() || canRecordAudio()}
           onMic={async (language) => {
-            try {
-              const spoken = await listenOnce(language);
-              const next = `${draft}${draft ? " " : ""}${spoken}`.trim();
-              if (data.settings.voiceMode === "fullAuto") {
+            if (!recordingMic && !shouldUseGeminiMicFallback() && data.settings.voiceMode === "fullAuto") {
+              try {
+                const spoken = await listenOnce(language);
+                const next = `${draft}${draft ? " " : ""}${spoken}`.trim();
                 await sendMessage(mergeInputSource(draftSource, "VOICE"), next);
-              } else {
-                appendToDraft(spoken, "VOICE");
+                return;
+              } catch (caught) {
+                setError((caught as Error).message);
+                return;
               }
-            } catch (caught) {
-              setError((caught as Error).message);
             }
+            await handleMicInput("chat", language);
           }}
         />}
         {activeTab === "review" && <ReviewTab vocab={data.vocab} messages={data.messages} onReload={reload} />}
@@ -1008,14 +1105,9 @@ export default function App() {
           setAssist((current) => ({ ...current, open: false }));
           await reload();
         }}
-        onMic={async () => {
-          try {
-            const spoken = await listenOnce("ja-JP");
-            setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
-          } catch (caught) {
-            setError((caught as Error).message);
-          }
-        }}
+        recording={recordingMic?.target === "assist"}
+        micAvailable={canRecognizeSpeech() || canRecordAudio()}
+        onMic={async () => handleMicInput("assist", "ja-JP")}
       />}
     </div>
   );
@@ -1172,7 +1264,9 @@ function ChatsTab(props: {
   onReport: (message: ChatMessage) => void;
   onSpeak: (message: ChatMessage) => void;
   onStopSpeak: () => void;
-  onMic: (language: "en-US" | "ja-JP") => void;
+  recordingMic: MicLanguage | null;
+  micAvailable: boolean;
+  onMic: (language: MicLanguage) => void;
 }) {
   const newsItems = props.news?.items ?? [];
   const newsCategories = Array.from(new Map(newsItems.map((item) => [item.category, newsCategoryLabel(item)])).entries());
@@ -1241,8 +1335,8 @@ function ChatsTab(props: {
         </div>
         <div className="composer-input-row">
           <textarea rows={1} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Let's talk!" />
-          <button data-tutorial-id={TUTORIAL_TARGETS.chatMic} className="voice-mini" disabled={!canRecognizeSpeech()} title="English voice input" onClick={() => props.onMic("en-US")}><Mic size={19} /><span>英</span></button>
-          <button className="voice-mini" disabled={!canRecognizeSpeech()} title="Japanese voice input" onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>日</span></button>
+          <button data-tutorial-id={TUTORIAL_TARGETS.chatMic} className={`voice-mini ${props.recordingMic === "en-US" ? "recording" : ""}`} disabled={!props.micAvailable} title={props.recordingMic === "en-US" ? "Stop English recording" : "English voice input"} onClick={() => props.onMic("en-US")}><Mic size={19} /><span>{props.recordingMic === "en-US" ? "止" : "英"}</span></button>
+          <button className={`voice-mini ${props.recordingMic === "ja-JP" ? "recording" : ""}`} disabled={!props.micAvailable} title={props.recordingMic === "ja-JP" ? "日本語録音を停止" : "Japanese voice input"} onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>{props.recordingMic === "ja-JP" ? "止" : "日"}</span></button>
           <button className="send-mini primary" title="Send" onClick={props.onSend}><Send size={22} /></button>
         </div>
       </div>
@@ -1804,6 +1898,8 @@ function AssistModal(props: {
   setAssist: React.Dispatch<React.SetStateAction<{ open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> }>>;
   runAssist: () => void;
   adopt: (english: string) => void;
+  recording: boolean;
+  micAvailable: boolean;
   onMic: () => void;
 }) {
   return <div className="modal-backdrop">
@@ -1818,7 +1914,7 @@ function AssistModal(props: {
       <textarea rows={3} value={props.assist.stuck} onChange={(event) => props.setAssist({ ...props.assist, stuck: event.target.value })} placeholder="日本語でも英語でも、言いたいことを書いてください。" />
       <div className="row">
         <button className="primary" onClick={props.runAssist}><Sparkles size={15} /> 候補を出す</button>
-        <button disabled={!canRecognizeSpeech()} onClick={props.onMic}><Mic size={15} /> 日本語で話す</button>
+        <button className={props.recording ? "danger" : ""} disabled={!props.micAvailable} onClick={props.onMic}><Mic size={15} /> {props.recording ? "録音を止める" : "日本語で話す"}</button>
       </div>
       {props.assist.suggestions.map((suggestion) => <article className="card stack" key={suggestion.english}>
         <strong>{suggestion.english}</strong>

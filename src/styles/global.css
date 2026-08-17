@@ -893,6 +893,16 @@ a {
   color: var(--gold-dark);
 }
 
+.voice-mini.recording {
+  background: var(--accent);
+  color: var(--parchment-light);
+  border-radius: 10px;
+}
+
+.voice-mini.recording span {
+  color: var(--parchment-light);
+}
+
 .send-mini {
   border-radius: 10px;
 }
