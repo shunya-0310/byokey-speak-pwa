@@ -61,7 +61,7 @@ import { generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWith
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
-import { canRecordAudio, canRecognizeSpeech, listenOnce, shouldUseGeminiMicFallback, speakCoachText, startWavRecorder, stopSpeaking, type MicLanguage, type WavRecorder } from "../infrastructure/speech";
+import { canRecordAudio, canRecognizeSpeech, shouldUseGeminiMicFallback, speakCoachText, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
@@ -325,6 +325,9 @@ export default function App() {
   const [tutorialReplayMode, setTutorialReplayMode] = useState(false);
   const [recordingMic, setRecordingMic] = useState<{ target: "chat" | "assist"; language: MicLanguage } | null>(null);
   const wavRecorderRef = useRef<WavRecorder | null>(null);
+  const speechSessionRef = useRef<SpeechRecognitionSession | null>(null);
+  const micContextRef = useRef<{ target: "chat" | "assist"; language: MicLanguage; autoSubmit: boolean; baseSource: ChatMessage["inputSource"] } | null>(null);
+  const autoSubmitTimerRef = useRef<number | null>(null);
   const [tutorialSeen, setTutorialSeen] = useState<Record<TutorialKind, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem(TUTORIAL_SEEN_KEY) ?? "{}") as Record<TutorialKind, boolean>;
@@ -584,7 +587,40 @@ export default function App() {
     setDraftSource(previous.trim() ? "TYPED" : "TYPED");
   }
 
-  async function transcribeRecordedAudio(target: "chat" | "assist", language: MicLanguage, audio: Blob) {
+  async function applyMicTranscript(text: string, context: { target: "chat" | "assist"; autoSubmit: boolean; baseSource: ChatMessage["inputSource"] }) {
+    const spoken = text.trim();
+    if (!spoken) {
+      setNotice("音声を認識できませんでした。もう一度お試しください。");
+      return;
+    }
+    if (context.target === "assist") {
+      setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
+      setNotice("音声を入力欄へ反映しました。");
+      return;
+    }
+    const next = `${draft}${draft ? " " : ""}${spoken}`.trim();
+    if (context.autoSubmit) {
+      await sendMessage(mergeInputSource(context.baseSource, "VOICE"), next);
+      return;
+    }
+    appendToDraft(spoken, "VOICE");
+    setNotice("音声を入力欄へ反映しました。");
+  }
+
+  function clearAutoSubmitTimer() {
+    if (autoSubmitTimerRef.current === null) return;
+    window.clearTimeout(autoSubmitTimerRef.current);
+    autoSubmitTimerRef.current = null;
+  }
+
+  function scheduleAutoSubmitAfterSilence() {
+    clearAutoSubmitTimer();
+    autoSubmitTimerRef.current = window.setTimeout(() => {
+      void stopActiveMicRecording();
+    }, 4000);
+  }
+
+  async function transcribeRecordedAudio(context: { target: "chat" | "assist"; language: MicLanguage; autoSubmit: boolean; baseSource: ChatMessage["inputSource"] }, audio: Blob) {
     if (!canSendToGemini) {
       setActiveTab("settings");
       setError("Gemini文字起こしには、同意とAPIキー設定が必要です。");
@@ -598,17 +634,8 @@ export default function App() {
     }
     setBusy("Geminiで音声を文字起こし中です");
     try {
-      const spoken = await transcribeAudioWithGemini({ apiKey, model: currentData.settings.model, audio, language });
-      if (!spoken.trim()) {
-        setNotice("音声を認識できませんでした。もう一度お試しください。");
-        return;
-      }
-      if (target === "assist") {
-        setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
-      } else {
-        appendToDraft(spoken, "VOICE");
-      }
-      setNotice("音声を入力欄へ反映しました。");
+      const spoken = await transcribeAudioWithGemini({ apiKey, model: currentData.settings.model, audio, language: context.language });
+      await applyMicTranscript(spoken, context);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -616,31 +643,48 @@ export default function App() {
     }
   }
 
-  async function stopGeminiMicRecording() {
-    const recording = recordingMic;
-    const recorder = wavRecorderRef.current;
-    if (!recording || !recorder) return;
+  async function stopActiveMicRecording() {
+    clearAutoSubmitTimer();
+    const context = micContextRef.current;
+    if (!recordingMic || !context) return;
     setRecordingMic(null);
+    micContextRef.current = null;
+
+    const speechSession = speechSessionRef.current;
+    if (speechSession) {
+      speechSessionRef.current = null;
+      try {
+        const spoken = await speechSession.stop();
+        await applyMicTranscript(spoken, context);
+      } catch (caught) {
+        setError((caught as Error).message);
+      }
+      return;
+    }
+
+    const recorder = wavRecorderRef.current;
+    if (!recorder) return;
     wavRecorderRef.current = null;
     try {
       const audio = await recorder.stop();
-      await transcribeRecordedAudio(recording.target, recording.language, audio);
+      await transcribeRecordedAudio(context, audio);
     } catch (caught) {
       setError((caught as Error).message);
     }
   }
 
-  async function startGeminiMicRecording(target: "chat" | "assist", language: MicLanguage) {
+  async function startGeminiMicRecording(target: "chat" | "assist", language: MicLanguage, autoSubmit = false, baseSource: ChatMessage["inputSource"] = "VOICE") {
     if (!canRecordAudio()) {
       setError("このブラウザではマイク録音を開始できません。OSキーボードの音声入力をご利用ください。");
       return;
     }
     if (recordingMic) {
-      await stopGeminiMicRecording();
+      await stopActiveMicRecording();
       return;
     }
     try {
       wavRecorderRef.current = await startWavRecorder();
+      micContextRef.current = { target, language, autoSubmit, baseSource };
       setRecordingMic({ target, language });
       setNotice("録音中です。もう一度マイクを押すと停止して文字起こしします。");
     } catch (caught) {
@@ -648,28 +692,39 @@ export default function App() {
     }
   }
 
-  async function handleMicInput(target: "chat" | "assist", language: MicLanguage) {
+  function startBrowserMicRecording(target: "chat" | "assist", language: MicLanguage, autoSubmit = false, baseSource: ChatMessage["inputSource"] = "VOICE") {
     if (recordingMic) {
-      await stopGeminiMicRecording();
-      return;
-    }
-    if (shouldUseGeminiMicFallback()) {
-      await startGeminiMicRecording(target, language);
+      void stopActiveMicRecording();
       return;
     }
     try {
-      const spoken = await listenOnce(language);
-      if (target === "assist") {
-        setAssist((current) => ({ ...current, stuck: `${current.stuck}${current.stuck ? " " : ""}${spoken}` }));
-      } else {
-        appendToDraft(spoken, "VOICE");
-      }
+      micContextRef.current = { target, language, autoSubmit, baseSource };
+      speechSessionRef.current = startSpeechRecognitionSession(language, (text) => {
+        if (text && autoSubmit) scheduleAutoSubmitAfterSilence();
+      }, (error) => {
+        clearAutoSubmitTimer();
+        speechSessionRef.current = null;
+        micContextRef.current = null;
+        setRecordingMic(null);
+        setError(error.message);
+      });
+      setRecordingMic({ target, language });
+      setNotice(autoSubmit ? "音声入力中です。話し終わると数秒後に自動送信します。マイクを押すとすぐ送信します。" : "音声入力中です。話し終わったら、もう一度マイクを押して確定してください。");
     } catch (caught) {
-      if (canRecordAudio()) {
-        setNotice("この環境では通常の音声認識が使えません。Gemini文字起こし録音に切り替えます。もう一度マイクを押して録音してください。");
-      }
       setError((caught as Error).message);
     }
+  }
+
+  async function handleMicInput(target: "chat" | "assist", language: MicLanguage, autoSubmit = false, baseSource: ChatMessage["inputSource"] = "VOICE") {
+    if (recordingMic) {
+      await stopActiveMicRecording();
+      return;
+    }
+    if (shouldUseGeminiMicFallback()) {
+      await startGeminiMicRecording(target, language, autoSubmit, baseSource);
+      return;
+    }
+    startBrowserMicRecording(target, language, autoSubmit, baseSource);
   }
 
   async function cycleVoiceMode() {
@@ -710,16 +765,7 @@ export default function App() {
       setNotice("この環境では自動マイク開始に制限があります。英マイクを押して録音してください。");
       return;
     }
-    try {
-      const spoken = await listenOnce("en-US");
-      if (mode === "fullAuto") {
-        await sendMessage(mergeInputSource(baseSource, "VOICE"), spoken);
-      } else {
-        appendToDraft(spoken, "VOICE");
-      }
-    } catch (caught) {
-      setError((caught as Error).message);
-    }
+    startBrowserMicRecording("chat", "en-US", mode === "fullAuto", baseSource);
   }
 
   async function sendMessage(source: ChatMessage["inputSource"] = draftSource, text = draft) {
@@ -965,18 +1011,7 @@ export default function App() {
           recordingMic={recordingMic?.target === "chat" ? recordingMic.language : null}
           micAvailable={canRecognizeSpeech() || canRecordAudio()}
           onMic={async (language) => {
-            if (!recordingMic && !shouldUseGeminiMicFallback() && data.settings.voiceMode === "fullAuto") {
-              try {
-                const spoken = await listenOnce(language);
-                const next = `${draft}${draft ? " " : ""}${spoken}`.trim();
-                await sendMessage(mergeInputSource(draftSource, "VOICE"), next);
-                return;
-              } catch (caught) {
-                setError((caught as Error).message);
-                return;
-              }
-            }
-            await handleMicInput("chat", language);
+            await handleMicInput("chat", language, data.settings.voiceMode === "fullAuto", draftSource);
           }}
         />}
         {activeTab === "review" && <ReviewTab vocab={data.vocab} messages={data.messages} onReload={reload} />}
@@ -1317,7 +1352,7 @@ function ChatsTab(props: {
         </article>)}
       </div>
       <div className="composer">
-        {props.settings.voiceMode !== "off" && <p className="voice-mode-hint small">{props.settings.voiceMode === "manual" ? "✦ マニュアル送信: 読み上げ後に英語マイクが起動します" : "✦ フルオート: 音声入力が終わると自動で送信します"}</p>}
+        {props.settings.voiceMode !== "off" && <p className="voice-mode-hint small">{props.settings.voiceMode === "manual" ? "✦ マニュアル送信: 話し終えたらマイクを押して確定します" : "✦ フルオート: 話し終えて数秒待つと自動送信します"}</p>}
         <div className="composer-actions" aria-label="Conversation tools">
           <button data-tutorial-id={TUTORIAL_TARGETS.chatAutoMode} className={`icon-button ghost voice-mode-button ${props.settings.voiceMode !== "off" ? "active" : ""}`} title="Voice Mode切替" onClick={props.onVoiceModeCycle}>
             <Headphones size={20} />

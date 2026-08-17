@@ -10,7 +10,7 @@ interface SpeechRecognition extends EventTarget {
   continuous: boolean;
   start(): void;
   stop(): void;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>>; resultIndex?: number }) => void) | null;
   onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
 }
@@ -19,6 +19,10 @@ export type MicLanguage = "ja-JP" | "en-US";
 
 export type WavRecorder = {
   stop: () => Promise<Blob>;
+};
+
+export type SpeechRecognitionSession = {
+  stop: () => Promise<string>;
 };
 
 export function canRecognizeSpeech() {
@@ -73,6 +77,84 @@ export function listenOnce(lang: MicLanguage) {
       reject(new Error("音声入力を開始できませんでした。"));
     }
   });
+}
+
+export function startSpeechRecognitionSession(lang: MicLanguage, onTranscript?: (text: string) => void, onError?: (error: Error) => void): SpeechRecognitionSession {
+  const Ctor = ((window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor }).SpeechRecognition
+    ?? (window as unknown as { webkitSpeechRecognition?: RecognitionCtor }).webkitSpeechRecognition);
+  if (!Ctor) throw new Error("このブラウザは音声入力APIに対応していません。OSキーボードの音声入力を利用してください。");
+
+  let recognition: SpeechRecognition | null = null;
+  let stoppedByUser = false;
+  let running = false;
+  let transcript = "";
+  let stopResolve: ((text: string) => void) | null = null;
+  let stopReject: ((error: Error) => void) | null = null;
+
+  const start = () => {
+    if (stoppedByUser || running) return;
+    recognition = new Ctor();
+    recognition.lang = lang;
+    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.onresult = (event) => {
+      const startIndex = event.resultIndex ?? 0;
+      const additions: string[] = [];
+      for (let index = startIndex; index < event.results.length; index += 1) {
+        const text = event.results[index]?.[0]?.transcript?.trim();
+        if (text) additions.push(text);
+      }
+      if (!additions.length) return;
+      transcript = `${transcript}${transcript ? " " : ""}${additions.join(" ")}`.trim();
+      onTranscript?.(transcript);
+    };
+    recognition.onerror = (event) => {
+      const recoverable = event.error === "no-speech" || event.error === "audio-capture" || event.error === "network";
+      if (!recoverable) {
+        const suffix = event.error ? ` (${event.error})` : "";
+        const error = new Error(`音声入力に失敗しました${suffix}。`);
+        stoppedByUser = true;
+        onError?.(error);
+        stopReject?.(error);
+      }
+    };
+    recognition.onend = () => {
+      running = false;
+      if (stoppedByUser) {
+        stopResolve?.(transcript);
+        return;
+      }
+      window.setTimeout(start, 250);
+    };
+    try {
+      recognition.start();
+      running = true;
+    } catch {
+      const error = new Error("音声入力を開始できませんでした。");
+      stopReject?.(error);
+      throw error;
+    }
+  };
+
+  start();
+
+  return {
+    stop: () => new Promise<string>((resolve, reject) => {
+      stopResolve = resolve;
+      stopReject = reject;
+      stoppedByUser = true;
+      if (!recognition || !running) {
+        resolve(transcript);
+        return;
+      }
+      try {
+        recognition.stop();
+      } catch {
+        resolve(transcript);
+      }
+      window.setTimeout(() => resolve(transcript), 1200);
+    })
+  };
 }
 
 export async function startWavRecorder(): Promise<WavRecorder> {
