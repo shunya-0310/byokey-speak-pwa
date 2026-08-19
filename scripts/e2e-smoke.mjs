@@ -34,7 +34,13 @@ async function checkViewport(contextOptions) {
       async function advanceOnboarding(expectedText) {
         for (let attempt = 0; attempt < 3; attempt += 1) {
           const beforeText = await page.locator("body").innerText().catch(() => "");
-          await page.locator(".onboarding-actions button.primary").click({ force: true, timeout: 5000 });
+          const nextButton = page.getByRole("button", { name: "次へ" }).last();
+          try {
+            await nextButton.scrollIntoViewIfNeeded({ timeout: 5000 });
+            await nextButton.click({ timeout: 5000 });
+          } catch {
+            continue;
+          }
           try {
             await page.waitForFunction((text) => document.body.innerText.includes(text), expectedText, { timeout: 2500 });
             return;

@@ -3,6 +3,8 @@ import type { VoiceGender } from "../domain/models";
 
 type RecognitionCtor = new () => SpeechRecognition;
 type WebKitNavigator = Navigator & { standalone?: boolean };
+let currentGeneratedAudio: HTMLAudioElement | null = null;
+let currentGeneratedAudioUrl = "";
 
 interface SpeechRecognition extends EventTarget {
   lang: string;
@@ -246,6 +248,74 @@ export function speakCoachText(text: string, gender: VoiceGender, onEnd?: () => 
   return true;
 }
 
+export function playGeneratedSpeech(input: { base64Audio: string; mimeType: string; onEnd?: () => void; rate?: number }) {
+  stopSpeaking();
+  const audioBytes = base64ToBytes(input.base64Audio);
+  const blob = input.mimeType.startsWith("audio/pcm")
+    ? new Blob([wrapPcmAsWav(audioBytes, sampleRateFromMime(input.mimeType) ?? 24000)], { type: "audio/wav" })
+    : new Blob([audioBytes], { type: input.mimeType || "audio/wav" });
+  currentGeneratedAudioUrl = URL.createObjectURL(blob);
+  currentGeneratedAudio = new Audio(currentGeneratedAudioUrl);
+  currentGeneratedAudio.playbackRate = Math.min(1.5, Math.max(0.6, input.rate ?? 1));
+  currentGeneratedAudio.onended = () => {
+    cleanupGeneratedAudio();
+    input.onEnd?.();
+  };
+  currentGeneratedAudio.onerror = () => {
+    cleanupGeneratedAudio();
+    input.onEnd?.();
+  };
+  void currentGeneratedAudio.play();
+  return true;
+}
+
 export function stopSpeaking() {
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  if (currentGeneratedAudio) {
+    currentGeneratedAudio.pause();
+    currentGeneratedAudio.currentTime = 0;
+    cleanupGeneratedAudio();
+  }
+}
+
+function cleanupGeneratedAudio() {
+  currentGeneratedAudio = null;
+  if (currentGeneratedAudioUrl) {
+    URL.revokeObjectURL(currentGeneratedAudioUrl);
+    currentGeneratedAudioUrl = "";
+  }
+}
+
+function base64ToBytes(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function sampleRateFromMime(mimeType: string) {
+  const match = mimeType.match(/rate=(\d+)/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+function wrapPcmAsWav(pcmBytes: Uint8Array, sampleRate: number) {
+  const buffer = new ArrayBuffer(44 + pcmBytes.byteLength);
+  const view = new DataView(buffer);
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + pcmBytes.byteLength, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, pcmBytes.byteLength, true);
+  new Uint8Array(buffer, 44).set(pcmBytes);
+  return buffer;
 }

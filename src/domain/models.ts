@@ -1,7 +1,8 @@
 export type ThemeMode = "dark" | "light";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
-export type VoiceMode = "off" | "manual" | "fullAuto";
+export type VoiceMode = "off" | "manual" | "fullAuto" | "live";
 export type VoiceGender = "female" | "male";
+export type SpeechOutputProvider = "device" | "geminiTts";
 export type MessageRole = "user" | "coach" | "system";
 export type MessageInputSource = "TYPED" | "VOICE" | "QUICK_ASSIST" | "MIXED" | "NONE" | "UNKNOWN";
 export type ConversationOrigin = "FREE_CHAT" | "TOPIC" | "DAILY_NEWS" | "MIGRATED_COACH";
@@ -11,6 +12,48 @@ export const GEMINI_MODELS = [
   { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", recommended: true },
   { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", recommended: false },
   { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", recommended: false }
+] as const;
+
+export const GEMINI_TTS_MODELS = [
+  { id: "gemini-3.1-flash-tts-preview", label: "Gemini 3.1 Flash TTS Preview", recommended: true }
+] as const;
+
+export const GEMINI_LIVE_MODELS = [
+  { id: "gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live Preview", recommended: true },
+  { id: "gemini-2.5-flash-native-audio-preview-12-2025", label: "Gemini 2.5 Flash Native Audio Preview", recommended: false }
+] as const;
+
+export const GEMINI_TTS_VOICES = [
+  "Kore",
+  "Puck",
+  "Charon",
+  "Fenrir",
+  "Aoede",
+  "Leda",
+  "Orus",
+  "Zephyr",
+  "Callirrhoe",
+  "Autonoe",
+  "Enceladus",
+  "Iapetus",
+  "Umbriel",
+  "Algieba",
+  "Despina",
+  "Erinome",
+  "Algenib",
+  "Rasalgethi",
+  "Laomedeia",
+  "Achernar",
+  "Alnilam",
+  "Schedar",
+  "Gacrux",
+  "Pulcherrima",
+  "Achird",
+  "Zubenelgenubi",
+  "Vindemiatrix",
+  "Sadachbia",
+  "Sadaltager",
+  "Sulafat"
 ] as const;
 
 export const DEFAULT_COACH_SKILLS = `# Coach Skills
@@ -38,6 +81,11 @@ export interface AppSettings {
   voiceMode: VoiceMode;
   voiceGender: VoiceGender;
   voiceRate: number;
+  speechOutputProvider: SpeechOutputProvider;
+  geminiTtsModel: string;
+  geminiTtsVoice: string;
+  liveModel: string;
+  liveVoice: string;
   soundEffectsEnabled: boolean;
   dailyNewsNotificationsEnabled: boolean;
   onboardingDone: boolean;
@@ -161,6 +209,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceMode: "manual",
   voiceGender: "female",
   voiceRate: 1,
+  speechOutputProvider: "device",
+  geminiTtsModel: GEMINI_TTS_MODELS[0].id,
+  geminiTtsVoice: "Kore",
+  liveModel: GEMINI_LIVE_MODELS[0].id,
+  liveVoice: "Kore",
   soundEffectsEnabled: true,
   dailyNewsNotificationsEnabled: false,
   onboardingDone: false,

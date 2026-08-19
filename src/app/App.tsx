@@ -31,6 +31,9 @@ import { StudyCalendarBottomSheet, VocabularyHistoryBottomSheet } from "./Progre
 import { SplashOverlay } from "./SplashOverlay";
 import {
   GEMINI_MODELS,
+  GEMINI_LIVE_MODELS,
+  GEMINI_TTS_MODELS,
+  GEMINI_TTS_VOICES,
   type AppSettings,
   type Chat,
   type ChatMessage,
@@ -40,7 +43,7 @@ import {
   type VocabCard
 } from "../domain/models";
 import { buildAnalysisPrompt, buildConversationPrompt, buildQuickAssistPrompt, buildTranslationPrompt, parseAssistSuggestions } from "../domain/prompts";
-import { countActiveVocabularyUse, deriveChatTitle, localProgress } from "../domain/stats";
+import { countActiveVocabularyUse, deriveChatTitle, localProgress, naturalReplyOf } from "../domain/stats";
 import {
   createChat,
   db,
@@ -57,11 +60,12 @@ import {
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
-import { generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { generateSpeechWithGemini, generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
+import { startGeminiLiveSession, type GeminiLiveSession, type GeminiLiveStatus } from "../infrastructure/live";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
-import { canRecordAudio, canRecognizeSpeech, shouldUseGeminiMicFallback, speakCoachText, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
+import { canRecordAudio, canRecognizeSpeech, playGeneratedSpeech, shouldUseGeminiMicFallback, speakCoachText, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
@@ -71,6 +75,7 @@ type SettingsStatus = { section: "api" | "conversation" | "backup" | "about" | "
 type SettingsSection = "system" | "coach" | "backup" | "data" | "help" | "about";
 type SplashMode = "postOnboarding" | null;
 type TutorialKind = "chats" | "chatControls" | "vocabulary" | "progress" | "settings";
+type LiveTranscriptLine = { role: "user" | "coach"; text: string };
 
 const TUTORIAL_SEEN_KEY = "byokey-speak-tutorials-seen";
 const TUTORIAL_TARGETS = {
@@ -328,6 +333,11 @@ export default function App() {
   const speechSessionRef = useRef<SpeechRecognitionSession | null>(null);
   const micContextRef = useRef<{ target: "chat" | "assist"; language: MicLanguage; autoSubmit: boolean; baseSource: ChatMessage["inputSource"] } | null>(null);
   const autoSubmitTimerRef = useRef<number | null>(null);
+  const liveSessionRef = useRef<GeminiLiveSession | null>(null);
+  const liveInputTranscriptRef = useRef("");
+  const liveOutputTranscriptRef = useRef("");
+  const [liveStatus, setLiveStatus] = useState<GeminiLiveStatus>("closed");
+  const [liveTranscript, setLiveTranscript] = useState<LiveTranscriptLine[]>([]);
   const [tutorialSeen, setTutorialSeen] = useState<Record<TutorialKind, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem(TUTORIAL_SEEN_KEY) ?? "{}") as Record<TutorialKind, boolean>;
@@ -457,6 +467,13 @@ export default function App() {
     const timer = window.setTimeout(() => setError(""), 2000);
     return () => window.clearTimeout(timer);
   }, [error]);
+
+  useEffect(() => {
+    return () => {
+      liveSessionRef.current?.stop();
+      liveSessionRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -730,8 +747,11 @@ export default function App() {
   async function cycleVoiceMode() {
     const next = nextVoiceMode(currentData.settings.voiceMode);
     playSound("select");
+    if (currentData.settings.voiceMode === "live" && next !== "live") {
+      stopLiveConversation();
+    }
     await updateSettings({ voiceMode: next });
-    setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : "Voice Mode: フルオート");
+    setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : next === "fullAuto" ? "Voice Mode: フルオート" : "Voice Mode: Gemini Live");
   }
 
   function toggleWebSearch() {
@@ -747,7 +767,45 @@ export default function App() {
     setSpeakingMessageId(null);
   }
 
-  function speakMessage(message: ChatMessage, afterEnd?: () => void) {
+  async function speakMessage(message: ChatMessage, afterEnd?: () => void) {
+    if (currentData.settings.speechOutputProvider === "geminiTts") {
+      if (!canSendToGemini) {
+        setActiveTab("settings");
+        setError("Gemini TTSには、同意とAPIキー設定が必要です。");
+        return;
+      }
+      const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
+      if (!apiKey) {
+        setActiveTab("settings");
+        setError("APIキーを再入力してください。");
+        return;
+      }
+      setBusy("Gemini TTSで読み上げ音声を生成中です");
+      setSpeakingMessageId(message.id);
+      try {
+        const speech = await generateSpeechWithGemini({
+          apiKey,
+          model: currentData.settings.geminiTtsModel,
+          text: naturalReplyOf(message.text),
+          voice: currentData.settings.geminiTtsVoice
+        });
+        playGeneratedSpeech({
+          base64Audio: speech.data,
+          mimeType: speech.mimeType,
+          rate: currentData.settings.voiceRate,
+          onEnd: () => {
+            setSpeakingMessageId((current) => current === message.id ? null : current);
+            afterEnd?.();
+          }
+        });
+      } catch (caught) {
+        setSpeakingMessageId(null);
+        setError((caught as Error).message);
+      } finally {
+        setBusy("");
+      }
+      return;
+    }
     const ok = speakCoachText(message.text, currentData.settings.voiceGender, () => {
       setSpeakingMessageId((current) => current === message.id ? null : current);
       afterEnd?.();
@@ -759,8 +817,104 @@ export default function App() {
     }
   }
 
+  function updateLiveTranscript(role: LiveTranscriptLine["role"], text: string) {
+    setLiveTranscript((current) => {
+      const next = current.slice();
+      if (next[next.length - 1]?.role === role) {
+        next[next.length - 1] = { role, text };
+      } else {
+        next.push({ role, text });
+      }
+      return next.slice(-8);
+    });
+  }
+
+  async function persistLiveTurn() {
+    const userText = liveInputTranscriptRef.current.trim();
+    const coachText = liveOutputTranscriptRef.current.trim();
+    liveInputTranscriptRef.current = "";
+    liveOutputTranscriptRef.current = "";
+    if (!activeChatId || (!userText && !coachText)) return;
+    const now = Date.now();
+    const entries: ChatMessage[] = [];
+    if (userText) {
+      entries.push({ id: id("msg"), chatId: activeChatId, role: "user", text: userText, inputSource: "VOICE", usedQuickAssist: false, createdAt: now });
+    }
+    if (coachText) {
+      entries.push({ id: id("msg"), chatId: activeChatId, role: "coach", text: `Natural reply: ${coachText}`, inputSource: "NONE", usedQuickAssist: false, createdAt: now + 1 });
+    }
+    await db.messages.bulkPut(entries);
+    const chatPatch: Partial<Chat> = { updatedAt: Date.now() };
+    if (activeChat?.title === "New chat" && userText) chatPatch.title = deriveChatTitle(userText);
+    await db.chats.update(activeChatId, chatPatch);
+    if (userText) await recordDailyStat({ turns: 1 });
+    await reload();
+  }
+
+  async function startLiveConversation() {
+    if (liveSessionRef.current) {
+      stopLiveConversation();
+      return;
+    }
+    if (!canSendToGemini) {
+      setActiveTab("settings");
+      setError("Gemini Liveには、同意とAPIキー設定が必要です。");
+      return;
+    }
+    const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
+    if (!apiKey) {
+      setActiveTab("settings");
+      setError("APIキーを再入力してください。");
+      return;
+    }
+    const instruction = [
+      "You are BYOKey Speak, a friendly English conversation coach.",
+      `Learner CEFR level: ${currentData.settings.englishLevel}.`,
+      "Speak naturally, warmly, and concisely. Keep replies short enough for spoken conversation.",
+      "If the learner makes an unnatural expression, correct it briefly in simple Japanese after the natural English reply.",
+      currentData.settings.coachSkills
+    ].join("\n\n");
+    try {
+      setLiveTranscript([]);
+      liveInputTranscriptRef.current = "";
+      liveOutputTranscriptRef.current = "";
+      liveSessionRef.current = await startGeminiLiveSession({
+        apiKey,
+        model: currentData.settings.liveModel,
+        voice: currentData.settings.liveVoice,
+        systemInstruction: instruction,
+        onStatus: setLiveStatus,
+        onInputTranscript: (text) => {
+          liveInputTranscriptRef.current = text;
+          updateLiveTranscript("user", text);
+        },
+        onOutputTranscript: (text) => {
+          liveOutputTranscriptRef.current = text;
+          updateLiveTranscript("coach", text);
+        },
+        onTurnComplete: () => {
+          void persistLiveTurn();
+        },
+        onError: (caught) => {
+          setError(caught.message);
+          stopLiveConversation();
+        }
+      });
+      setNotice("Gemini Liveを開始しました。話しかけると音声で返答します。");
+    } catch (caught) {
+      setLiveStatus("closed");
+      setError((caught as Error).message);
+    }
+  }
+
+  function stopLiveConversation() {
+    liveSessionRef.current?.stop();
+    liveSessionRef.current = null;
+    setLiveStatus("closed");
+  }
+
   async function startAutoEnglishMic(mode: AppSettings["voiceMode"], baseSource: ChatMessage["inputSource"] = "VOICE") {
-    if (mode === "off") return;
+    if (mode === "off" || mode === "live") return;
     if (shouldUseGeminiMicFallback()) {
       setNotice("この環境では自動マイク開始に制限があります。英マイクを押して録音してください。");
       return;
@@ -830,8 +984,8 @@ export default function App() {
         await db.learningNotes.put({ id: id("note"), chatId: activeChat.id, sourceMessage: trimmed, coachNotes: reply.coachNote ?? "", betterOptions: reply.betterOptions.join("\n"), japaneseNote: reply.japaneseExplanation ?? "", reviewed: false, createdAt: Date.now() });
       }
       await reload();
-      if (currentData.settings.voiceMode !== "off") {
-        speakMessage(coachMessage, () => {
+      if (currentData.settings.voiceMode !== "off" && currentData.settings.voiceMode !== "live") {
+        void speakMessage(coachMessage, () => {
           void startAutoEnglishMic(currentData.settings.voiceMode);
         });
       }
@@ -1006,10 +1160,13 @@ export default function App() {
           onVoiceModeCycle={cycleVoiceMode}
           onTranslate={translateMessage}
           onReport={reportMessage}
-          onSpeak={(message) => speakMessage(message)}
+          onSpeak={(message) => void speakMessage(message)}
           onStopSpeak={stopCurrentSpeech}
           recordingMic={recordingMic?.target === "chat" ? recordingMic.language : null}
           micAvailable={canRecognizeSpeech() || canRecordAudio()}
+          liveStatus={liveStatus}
+          liveTranscript={liveTranscript}
+          onLiveToggle={startLiveConversation}
           onMic={async (language) => {
             await handleMicInput("chat", language, data.settings.voiceMode === "fullAuto", draftSource);
           }}
@@ -1245,7 +1402,17 @@ function mergeInputSource(current: ChatMessage["inputSource"], next: ChatMessage
 function nextVoiceMode(current: AppSettings["voiceMode"]): AppSettings["voiceMode"] {
   if (current === "off") return "manual";
   if (current === "manual") return "fullAuto";
+  if (current === "fullAuto") return "live";
   return "off";
+}
+
+function liveStatusLabel(status: GeminiLiveStatus) {
+  return {
+    connecting: "接続中",
+    connected: "接続済み",
+    listening: "会話中",
+    closed: "停止中"
+  }[status];
 }
 
 function Onboarding(props: { onDone: (consented: boolean) => void }) {
@@ -1301,6 +1468,9 @@ function ChatsTab(props: {
   onStopSpeak: () => void;
   recordingMic: MicLanguage | null;
   micAvailable: boolean;
+  liveStatus: GeminiLiveStatus;
+  liveTranscript: LiveTranscriptLine[];
+  onLiveToggle: () => void;
   onMic: (language: MicLanguage) => void;
 }) {
   const newsItems = props.news?.items ?? [];
@@ -1352,11 +1522,21 @@ function ChatsTab(props: {
         </article>)}
       </div>
       <div className="composer">
-        {props.settings.voiceMode !== "off" && <p className="voice-mode-hint small">{props.settings.voiceMode === "manual" ? "✦ マニュアル送信: 話し終えたらマイクを押して確定します" : "✦ フルオート: 話し終えて数秒待つと自動送信します"}</p>}
+        {props.settings.voiceMode !== "off" && <p className="voice-mode-hint small">{props.settings.voiceMode === "manual" ? "✦ マニュアル送信: 話し終えたらマイクを押して確定します" : props.settings.voiceMode === "fullAuto" ? "✦ フルオート: 話し終えて数秒待つと自動送信します" : "✦ Gemini Live: 高品質なリアルタイム音声会話を行います"}</p>}
+        {props.settings.voiceMode === "live" && <div className="live-console">
+          <div className="section-title">
+            <strong>Gemini Live</strong>
+            <button className={props.liveStatus === "closed" ? "primary" : "danger"} onClick={props.onLiveToggle}>{props.liveStatus === "closed" ? "Start" : "Stop"}</button>
+          </div>
+          <p className="small muted">状態: {liveStatusLabel(props.liveStatus)} / 音声入出力はGemini Live APIへ直接送信されます。</p>
+          {props.liveTranscript.length > 0 && <div className="live-transcript">
+            {props.liveTranscript.map((line, index) => <p key={`${line.role}-${index}`} className={`small ${line.role}`}><strong>{line.role === "user" ? "You" : "Coach"}:</strong> {line.text}</p>)}
+          </div>}
+        </div>}
         <div className="composer-actions" aria-label="Conversation tools">
           <button data-tutorial-id={TUTORIAL_TARGETS.chatAutoMode} className={`icon-button ghost voice-mode-button ${props.settings.voiceMode !== "off" ? "active" : ""}`} title="Voice Mode切替" onClick={props.onVoiceModeCycle}>
             <Headphones size={20} />
-            {props.settings.voiceMode !== "off" && <span className="mode-badge">{props.settings.voiceMode === "manual" ? "→" : "⇔"}</span>}
+            {props.settings.voiceMode !== "off" && <span className="mode-badge">{props.settings.voiceMode === "manual" ? "→" : props.settings.voiceMode === "fullAuto" ? "⇔" : "L"}</span>}
           </button>
           <button data-tutorial-id={TUTORIAL_TARGETS.chatQuickAssist} className="icon-button ghost" title="Quick Assist" onClick={props.onAssist}><Sparkles size={20} /></button>
           <button
@@ -1369,9 +1549,9 @@ function ChatsTab(props: {
           <button className="icon-button ghost" title="入力をひとつ戻す" disabled={!props.canUndoDraft} onClick={props.onUndo}><Undo2 size={20} /></button>
         </div>
         <div className="composer-input-row">
-          <textarea rows={1} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder="Let's talk!" />
-          <button data-tutorial-id={TUTORIAL_TARGETS.chatMic} className={`voice-mini ${props.recordingMic === "en-US" ? "recording" : ""}`} disabled={!props.micAvailable} title={props.recordingMic === "en-US" ? "Stop English recording" : "English voice input"} onClick={() => props.onMic("en-US")}><Mic size={19} /><span>{props.recordingMic === "en-US" ? "止" : "英"}</span></button>
-          <button className={`voice-mini ${props.recordingMic === "ja-JP" ? "recording" : ""}`} disabled={!props.micAvailable} title={props.recordingMic === "ja-JP" ? "日本語録音を停止" : "Japanese voice input"} onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>{props.recordingMic === "ja-JP" ? "止" : "日"}</span></button>
+          <textarea rows={1} value={props.draft} onChange={(event) => props.setDraftFromUser(event.target.value)} placeholder={props.settings.voiceMode === "live" ? "Live中もテキスト送信できます" : "Let's talk!"} />
+          <button data-tutorial-id={TUTORIAL_TARGETS.chatMic} className={`voice-mini ${props.recordingMic === "en-US" ? "recording" : ""}`} disabled={!props.micAvailable || props.settings.voiceMode === "live"} title={props.recordingMic === "en-US" ? "Stop English recording" : "English voice input"} onClick={() => props.onMic("en-US")}><Mic size={19} /><span>{props.recordingMic === "en-US" ? "止" : "英"}</span></button>
+          <button className={`voice-mini ${props.recordingMic === "ja-JP" ? "recording" : ""}`} disabled={!props.micAvailable || props.settings.voiceMode === "live"} title={props.recordingMic === "ja-JP" ? "日本語録音を停止" : "Japanese voice input"} onClick={() => props.onMic("ja-JP")}><Mic size={19} /><span>{props.recordingMic === "ja-JP" ? "止" : "日"}</span></button>
           <button className="send-mini primary" title="Send" onClick={props.onSend}><Send size={22} /></button>
         </div>
       </div>
@@ -1827,10 +2007,23 @@ function SettingsTab(props: {
       </div>}
       {section === "coach" && <div className="stack">
         <article className="grid settings-grid">
-          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option></select></label>
+          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option><option value="live">Gemini Live（実験）</option></select></label>
+          <label>読み上げ方式<select value={props.settings.speechOutputProvider} onChange={(event) => props.onSettings({ speechOutputProvider: event.target.value as AppSettings["speechOutputProvider"] })}><option value="device">端末の読み上げ（無料・端末依存）</option><option value="geminiTts">Gemini TTS（高品質・API利用）</option></select></label>
           <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
           <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
         </article>
+        {(props.settings.speechOutputProvider === "geminiTts" || props.settings.voiceMode === "live") && <article className="card stack">
+          <h3>Gemini音声（Preview）</h3>
+          <p className="small muted">Gemini TTSとGemini LiveはPreview機能です。読み上げテキストまたは音声が、利用者自身のGemini APIキーでGoogleのAPIへ送信され、API利用料が発生する場合があります。BYOKey Labのサーバーは経由しません。</p>
+          {props.settings.speechOutputProvider === "geminiTts" && <div className="grid settings-grid">
+            <label>TTS model<select value={props.settings.geminiTtsModel} onChange={(event) => props.onSettings({ geminiTtsModel: event.target.value })}>{GEMINI_TTS_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
+            <label>TTS voice<select value={props.settings.geminiTtsVoice} onChange={(event) => props.onSettings({ geminiTtsVoice: event.target.value })}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice}</option>)}</select></label>
+          </div>}
+          {props.settings.voiceMode === "live" && <div className="grid settings-grid">
+            <label>Live model<select value={props.settings.liveModel} onChange={(event) => props.onSettings({ liveModel: event.target.value })}>{GEMINI_LIVE_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
+            <label>Live voice<select value={props.settings.liveVoice} onChange={(event) => props.onSettings({ liveVoice: event.target.value })}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice}</option>)}</select></label>
+          </div>}
+        </article>}
         <article data-tutorial-id={TUTORIAL_TARGETS.settingsCefr} className="card stack cefr-guide">
           <h3>CEFRレベルの目安</h3>
           <div className="cefr-chip-row" role="listbox" aria-label="CEFR level">

@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com https://byokey-lab.com https://raw.githubusercontent.com https://cloudflareinsights.com https://*.cloudflareinsights.com; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self' https://byokey-lab.com; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com https://byokey-lab.com https://raw.githubusercontent.com https://cloudflareinsights.com https://*.cloudflareinsights.com; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self' https://byokey-lab.com; frame-ancestors 'none'; upgrade-insecure-requests
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY

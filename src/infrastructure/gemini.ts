@@ -128,6 +128,53 @@ export async function transcribeAudioWithGemini(input: {
   return collectTexts(JSON.parse(raw)).trim().replace(/^["「]|["」]$/g, "");
 }
 
+export async function generateSpeechWithGemini(input: {
+  apiKey: string;
+  model: string;
+  text: string;
+  voice: string;
+}) {
+  if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
+  const text = input.text.trim();
+  if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
+  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
+  const body = {
+    model,
+    input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
+    response_format: { type: "audio" },
+    generation_config: {
+      speech_config: [{ voice: input.voice || "Kore" }]
+    }
+  };
+
+  let response: Response;
+  try {
+    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": input.apiKey
+      },
+      body: JSON.stringify(body),
+      cache: "no-store"
+    });
+  } catch {
+    throw new LlmError("network", userMessageForError("network"));
+  }
+
+  const raw = await response.text();
+  if (!response.ok) {
+    const kind = classifyGeminiError(response.status, raw);
+    throw new LlmError(kind, userMessageForError(kind));
+  }
+  const audio = collectAudio(JSON.parse(raw));
+  if (!audio?.data) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
+  return {
+    data: audio.data,
+    mimeType: audio.mimeType || "audio/pcm;rate=24000"
+  };
+}
+
 export async function testGeminiConnection(apiKey: string, model: string) {
   const result = await generateWithGemini({ apiKey, model, prompt: "Reply with exactly: OK" });
   return result.text.toLowerCase().includes("ok");
@@ -194,6 +241,32 @@ function collectSources(value: unknown, output = new Map<string, LlmSource>()): 
     Object.values(record).forEach((child) => collectSources(child, output));
   }
   return [...output.values()].slice(0, 6);
+}
+
+function collectAudio(value: unknown): { data: string; mimeType?: string } | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = collectAudio(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const outputAudio = (record.output_audio ?? record.outputAudio) as Record<string, unknown> | undefined;
+  if (outputAudio && typeof outputAudio.data === "string") {
+    return { data: outputAudio.data, mimeType: typeof outputAudio.mimeType === "string" ? outputAudio.mimeType : typeof outputAudio.mime_type === "string" ? outputAudio.mime_type : undefined };
+  }
+  const inlineData = (record.inlineData ?? record.inline_data) as Record<string, unknown> | undefined;
+  if (inlineData && typeof inlineData.data === "string") {
+    return { data: inlineData.data, mimeType: typeof inlineData.mimeType === "string" ? inlineData.mimeType : typeof inlineData.mime_type === "string" ? inlineData.mime_type : undefined };
+  }
+  for (const child of Object.values(record)) {
+    const found = collectAudio(child);
+    if (found) return found;
+  }
+  return null;
 }
 
 function blobToBase64(blob: Blob) {
