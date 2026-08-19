@@ -59,7 +59,7 @@ import {
   saveVocabCard,
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
-import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
+import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
 import { generateSpeechWithGemini, generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { startGeminiLiveSession, type GeminiLiveSession, type GeminiLiveStatus } from "../infrastructure/live";
@@ -347,7 +347,7 @@ export default function App() {
   });
 
   async function reload() {
-    const [settings, chats, messages, vocab, notes, stats, analyses] = await Promise.all([
+    const [storedSettings, chats, messages, vocab, notes, stats, analyses] = await Promise.all([
       loadSettings(),
       db.chats.orderBy("updatedAt").reverse().toArray(),
       db.messages.orderBy("createdAt").toArray(),
@@ -356,6 +356,11 @@ export default function App() {
       db.dailyStats.toArray(),
       db.analyses.orderBy("createdAt").reverse().toArray()
     ]);
+    const keyIsReadable = await hasActiveApiKey(storedSettings.apiKeyMode);
+    const settings = storedSettings.hasApiKey === keyIsReadable
+      ? storedSettings
+      : { ...storedSettings, hasApiKey: keyIsReadable };
+    if (settings !== storedSettings) await saveSettings(settings);
     setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
     document.documentElement.dataset.theme = settings.theme;
     const hasUserCreatedChatData = chats.some((chat) => chat.origin !== "FREE_CHAT" || chat.title !== "New chat" || Boolean(chat.newsContext));
@@ -1223,11 +1228,16 @@ export default function App() {
           onSaveApiKey={async () => {
             if (!apiKeyDraft.trim()) return showSettingsStatus({ section: "api", kind: "error", text: "APIキーを入力してください。" });
             const mode = data.settings.apiKeyMode;
-            if (mode === "persistent") {
-              if (!isTrustedPersistentOrigin()) return showSettingsStatus({ section: "api", kind: "error", text: "このオリジンではブラウザ保存を既定で無効にしています。session-onlyを選んでください。" });
-              await savePersistentApiKey(apiKeyDraft.trim());
-            } else {
-              saveSessionApiKey(apiKeyDraft.trim());
+            try {
+              if (mode === "persistent") {
+                if (!isTrustedPersistentOrigin()) return showSettingsStatus({ section: "api", kind: "error", text: "このURLではブラウザ保存を利用できません。『このセッションだけ』を選んでください。" });
+                await savePersistentApiKey(apiKeyDraft.trim());
+              } else {
+                saveSessionApiKey(apiKeyDraft.trim());
+              }
+              if (!await hasActiveApiKey(mode)) throw new Error("APIキーをブラウザに保存できませんでした。");
+            } catch (caught) {
+              return showSettingsStatus({ section: "api", kind: "error", text: `${(caught as Error).message} 端末のブラウザ設定でサイトデータがブロックされていないか確認してください。` });
             }
             await updateSettings({ hasApiKey: true });
             setApiKeyDraft("");

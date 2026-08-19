@@ -81,6 +81,10 @@ export async function getActiveApiKey(mode: "persistent" | "session") {
   return persistentKey || loadSessionApiKey();
 }
 
+export async function hasActiveApiKey(mode: "persistent" | "session") {
+  return Boolean((await getActiveApiKey(mode)).trim());
+}
+
 export async function deriveBackupKey(passphrase: string, salt: Uint8Array, iterations: number) {
   const material = await crypto.subtle.importKey("raw", textEncoder.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db";
-import { decryptBackupJson, encryptBackupJson, getActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "./crypto";
+import { decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "./crypto";
 
 beforeEach(async () => {
   sessionStorage.clear();
@@ -22,5 +22,11 @@ describe("backup crypto", () => {
 
     await savePersistentApiKey("persistent-key");
     await expect(getActiveApiKey("session")).resolves.toBe("persistent-key");
+  });
+
+  it("reports whether an API key can actually be read from local storage", async () => {
+    await expect(hasActiveApiKey("persistent")).resolves.toBe(false);
+    saveSessionApiKey("session-key");
+    await expect(hasActiveApiKey("persistent")).resolves.toBe(true);
   });
 });
