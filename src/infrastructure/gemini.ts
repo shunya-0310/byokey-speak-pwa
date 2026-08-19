@@ -140,6 +140,7 @@ export async function generateSpeechWithGemini(input: {
   model: string;
   text: string;
   voice: string;
+  signal?: AbortSignal;
 }): Promise<GeneratedSpeech> {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
   const text = input.text.trim();
@@ -148,7 +149,7 @@ export async function generateSpeechWithGemini(input: {
   const body = {
     model,
     input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
-    response_format: { type: "audio" },
+    response_format: { type: "audio", delivery: "inline", mime_type: "audio/l16", sample_rate: 24000 },
     generation_config: {
       speech_config: [{ voice: input.voice || "Kore" }]
     }
@@ -163,9 +164,11 @@ export async function generateSpeechWithGemini(input: {
         "x-goog-api-key": input.apiKey
       },
       body: JSON.stringify(body),
-      cache: "no-store"
+      cache: "no-store",
+      signal: input.signal
     });
-  } catch {
+  } catch (caught) {
+    if (input.signal?.aborted) throw caught;
     throw new LlmError("network", userMessageForError("network"));
   }
 
@@ -182,108 +185,6 @@ export async function generateSpeechWithGemini(input: {
     sampleRate: audio.sampleRate,
     channels: audio.channels
   };
-}
-
-export async function streamSpeechWithGemini(input: {
-  apiKey: string;
-  model: string;
-  text: string;
-  voice: string;
-  signal?: AbortSignal;
-  onAudio: (chunk: GeneratedSpeech) => void;
-}) {
-  if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
-  const text = input.text.trim();
-  if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
-  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
-  const body = {
-    model,
-    input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
-    response_format: { type: "audio", delivery: "inline", mime_type: "audio/l16", sample_rate: 24000 },
-    generation_config: { speech_config: [{ voice: input.voice || "Kore" }] },
-    stream: true
-  };
-
-  let response: Response;
-  try {
-    // The Interactions SDK explicitly adds alt=sse for streamed requests.
-    // Without it the REST endpoint returns one completed JSON object, which
-    // has no incremental step.delta events to play.
-    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": input.apiKey,
-        "Api-Revision": "2026-05-20"
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-      signal: input.signal
-    });
-  } catch (caught) {
-    if (input.signal?.aborted) throw caught;
-    throw new LlmError("network", userMessageForError("network"));
-  }
-
-  if (!response.ok) {
-    const raw = await response.text();
-    const kind = classifyGeminiError(response.status, raw);
-    throw new LlmError(kind, userMessageForError(kind));
-  }
-  if (!response.body) throw new LlmError("provider", "Gemini TTSの音声ストリームを開始できませんでした。");
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let audioCount = 0;
-
-  const handleEvent = (event: unknown) => {
-    if (!event || typeof event !== "object") return;
-    const record = event as Record<string, unknown>;
-    if (record.event_type === "error") throw new LlmError("provider", "Gemini TTSの音声生成に失敗しました。");
-    if (record.event_type !== "step.delta") return;
-    const audio = collectAudio(record.delta);
-    if (!audio) return;
-    audioCount += 1;
-    input.onAudio({
-      data: audio.data,
-      mimeType: audio.mimeType || "audio/l16;rate=24000",
-      sampleRate: audio.sampleRate,
-      channels: audio.channels
-    });
-  };
-
-  const drainEvents = (flush = false) => {
-    const blocks = buffer.replace(/\r\n/g, "\n").split("\n\n");
-    buffer = flush ? "" : blocks.pop() ?? "";
-    for (const block of blocks) {
-      const data = block.split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart())
-        .join("\n");
-      if (!data || data === "[DONE]") continue;
-      try {
-        handleEvent(JSON.parse(data));
-      } catch (caught) {
-        if (caught instanceof LlmError) throw caught;
-        throw new LlmError("provider", "Gemini TTSの音声ストリームを解析できませんでした。");
-      }
-    }
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (value) {
-        buffer += decoder.decode(value, { stream: !done });
-        drainEvents(done);
-      }
-      if (done) break;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  if (!audioCount) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
 }
 
 export async function testGeminiConnection(apiKey: string, model: string) {

@@ -60,7 +60,7 @@ import {
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
-import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { generateSpeechWithGemini, generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { startGeminiLiveSession, type GeminiLiveSession, type GeminiLiveStatus } from "../infrastructure/live";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
@@ -794,7 +794,7 @@ export default function App() {
       stopSpeaking();
       const abortController = new AbortController();
       ttsAbortControllerRef.current = abortController;
-      let started = false;
+      let completed = false;
       let fallbackStarted = false;
       const spokenText = naturalReplyOf(message.text);
       // Create and resume AudioContext while this click still has user activation.
@@ -808,7 +808,7 @@ export default function App() {
         })
       };
       const fallbackTimer = window.setTimeout(() => {
-        if (started || fallbackStarted) return;
+        if (completed || fallbackStarted) return;
         fallbackStarted = true;
         abortController.abort();
         streamRef.current?.stop();
@@ -825,37 +825,30 @@ export default function App() {
         }
       }, 5000);
       try {
-        await streamSpeechWithGemini({
+        const speech = await generateSpeechWithGemini({
           apiKey,
           model: currentData.settings.geminiTtsModel,
           text: spokenText,
           voice: currentData.settings.geminiTtsVoice,
-          signal: abortController.signal,
-          onAudio: (chunk) => {
-            if (fallbackStarted) return;
-            if (!started) {
-              started = true;
-              window.clearTimeout(fallbackTimer);
-              setBusy("");
-            }
-            streamRef.current?.enqueue({ base64Audio: chunk.data, sampleRate: chunk.sampleRate, channels: chunk.channels });
-          }
+          signal: abortController.signal
         });
-        if (!fallbackStarted) streamRef.current?.finish();
+        if (!fallbackStarted) {
+          completed = true;
+          window.clearTimeout(fallbackTimer);
+          setBusy("");
+          streamRef.current?.enqueue({ base64Audio: speech.data, sampleRate: speech.sampleRate, channels: speech.channels });
+          streamRef.current?.finish();
+        }
       } catch (caught) {
         if (!fallbackStarted && !abortController.signal.aborted) {
-          if (started && streamRef.current) {
-            streamRef.current.finish();
-            setNotice("Gemini TTSの音声生成が途中で終了しました。再生できた部分のみ読み上げます。");
-          } else {
-            setSpeakingMessageId(null);
-            setError((caught as Error).message);
-          }
+          streamRef.current?.stop();
+          setSpeakingMessageId(null);
+          setError((caught as Error).message);
         }
       } finally {
         window.clearTimeout(fallbackTimer);
         if (ttsAbortControllerRef.current === abortController) ttsAbortControllerRef.current = null;
-        if (!started && !fallbackStarted) setBusy("");
+        if (!completed && !fallbackStarted) setBusy("");
       }
       return;
     }
