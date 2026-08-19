@@ -809,12 +809,14 @@ export default function App() {
       try {
         const cacheId = generatedSpeechCacheId(message.id, currentData.settings.geminiTtsModel, currentData.settings.geminiTtsVoice);
         const cachedSpeech = await getCachedGeneratedSpeech(cacheId);
+        if (abortController.signal.aborted) return;
         if (cachedSpeech) {
           streamRef.current?.enqueue({ base64Audio: cachedSpeech.data, sampleRate: cachedSpeech.sampleRate, channels: cachedSpeech.channels });
           streamRef.current?.finish();
           return;
         }
         const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
+        if (abortController.signal.aborted) return;
         if (!apiKey) {
           streamRef.current?.stop();
           setSpeakingMessageId(null);
@@ -830,6 +832,7 @@ export default function App() {
           voice: currentData.settings.geminiTtsVoice,
           signal: abortController.signal
         });
+        if (abortController.signal.aborted) return;
         try {
           await saveGeneratedSpeechCache({
             id: cacheId,
@@ -844,6 +847,7 @@ export default function App() {
         } catch {
           setNotice("音声は再生しますが、端末内に保存できませんでした。次回は再生成されます。");
         }
+        if (abortController.signal.aborted) return;
         setBusy("");
         streamRef.current?.enqueue({ base64Audio: speech.data, sampleRate: speech.sampleRate, channels: speech.channels });
         streamRef.current?.finish();
