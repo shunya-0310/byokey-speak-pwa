@@ -769,9 +769,9 @@ export default function App() {
 
   async function speakMessage(message: ChatMessage, afterEnd?: () => void) {
     if (currentData.settings.speechOutputProvider === "geminiTts") {
-      if (!canSendToGemini) {
+      if (currentData.settings.consentVersion < 1) {
         setActiveTab("settings");
-        setError("Gemini TTSには、同意とAPIキー設定が必要です。");
+        setError("Gemini TTSには、リスクと外部送信についての同意が必要です。");
         return;
       }
       const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
@@ -856,9 +856,9 @@ export default function App() {
       stopLiveConversation();
       return;
     }
-    if (!canSendToGemini) {
+    if (currentData.settings.consentVersion < 1) {
       setActiveTab("settings");
-      setError("Gemini Liveには、同意とAPIキー設定が必要です。");
+      setError("Gemini Liveには、リスクと外部送信についての同意が必要です。");
       return;
     }
     const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
