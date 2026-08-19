@@ -358,9 +358,14 @@ export default function App() {
       db.analyses.orderBy("createdAt").reverse().toArray()
     ]);
     const keyIsReadable = await hasActiveApiKey(storedSettings.apiKeyMode);
-    const settings = storedSettings.hasApiKey === keyIsReadable
+    let settings = storedSettings.hasApiKey === keyIsReadable
       ? storedSettings
       : { ...storedSettings, hasApiKey: keyIsReadable };
+    // Full Auto and Gemini Live are not reliable in the current browser-only
+    // implementation. Move older saved settings back to the usable manual mode.
+    if (settings.voiceMode === "fullAuto" || settings.voiceMode === "live") {
+      settings = { ...settings, voiceMode: "manual" };
+    }
     if (settings !== storedSettings) await saveSettings(settings);
     setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
     document.documentElement.dataset.theme = settings.theme;
@@ -757,7 +762,7 @@ export default function App() {
       stopLiveConversation();
     }
     await updateSettings({ voiceMode: next });
-    setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : next === "fullAuto" ? "Voice Mode: フルオート" : "Voice Mode: Gemini Live");
+    setNotice(next === "off" ? "Voice Mode: Off" : "Voice Mode: マニュアル送信");
   }
 
   function toggleWebSearch() {
@@ -794,8 +799,6 @@ export default function App() {
       stopSpeaking();
       const abortController = new AbortController();
       ttsAbortControllerRef.current = abortController;
-      let completed = false;
-      let fallbackStarted = false;
       const spokenText = naturalReplyOf(message.text);
       // Create and resume AudioContext while this click still has user activation.
       // Creating it after the network response can be rejected by Safari's autoplay policy.
@@ -807,23 +810,6 @@ export default function App() {
           }
         })
       };
-      const fallbackTimer = window.setTimeout(() => {
-        if (completed || fallbackStarted) return;
-        fallbackStarted = true;
-        abortController.abort();
-        streamRef.current?.stop();
-        setBusy("");
-        const fallbackAvailable = speakCoachText(spokenText, currentData.settings.voiceGender, () => {
-          setSpeakingMessageId((current) => current === message.id ? null : current);
-          afterEnd?.();
-        }, currentData.settings.voiceRate);
-        if (fallbackAvailable) {
-          setNotice("Gemini TTSの開始に時間がかかったため、端末の読み上げに切り替えました。");
-        } else {
-          setSpeakingMessageId(null);
-          setError("Gemini TTSの開始に時間がかかっています。もう一度お試しください。");
-        }
-      }, 5000);
       try {
         const speech = await generateSpeechWithGemini({
           apiKey,
@@ -832,33 +818,18 @@ export default function App() {
           voice: currentData.settings.geminiTtsVoice,
           signal: abortController.signal
         });
-        if (!fallbackStarted) {
-          completed = true;
-          window.clearTimeout(fallbackTimer);
-          setBusy("");
-          streamRef.current?.enqueue({ base64Audio: speech.data, sampleRate: speech.sampleRate, channels: speech.channels });
-          streamRef.current?.finish();
-        }
+        setBusy("");
+        streamRef.current?.enqueue({ base64Audio: speech.data, sampleRate: speech.sampleRate, channels: speech.channels });
+        streamRef.current?.finish();
       } catch (caught) {
-        if (!fallbackStarted && !abortController.signal.aborted) {
+        if (!abortController.signal.aborted) {
           streamRef.current?.stop();
-          const fallbackAvailable = speakCoachText(spokenText, currentData.settings.voiceGender, () => {
-            setSpeakingMessageId((current) => current === message.id ? null : current);
-            afterEnd?.();
-          }, currentData.settings.voiceRate);
-          if (fallbackAvailable) {
-            fallbackStarted = true;
-            setBusy("");
-            setNotice("Gemini TTSを開始できなかったため、端末の読み上げに切り替えました。");
-          } else {
-            setSpeakingMessageId(null);
-            setError((caught as Error).message);
-          }
+          setSpeakingMessageId(null);
+          setError((caught as Error).message);
         }
       } finally {
-        window.clearTimeout(fallbackTimer);
         if (ttsAbortControllerRef.current === abortController) ttsAbortControllerRef.current = null;
-        if (!completed && !fallbackStarted) setBusy("");
+        setBusy("");
       }
       return;
     }
@@ -1462,8 +1433,6 @@ function mergeInputSource(current: ChatMessage["inputSource"], next: ChatMessage
 
 function nextVoiceMode(current: AppSettings["voiceMode"]): AppSettings["voiceMode"] {
   if (current === "off") return "manual";
-  if (current === "manual") return "fullAuto";
-  if (current === "fullAuto") return "live";
   return "off";
 }
 
@@ -2068,7 +2037,7 @@ function SettingsTab(props: {
       </div>}
       {section === "coach" && <div className="stack">
         <article className="grid settings-grid">
-          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto">Full Auto</option><option value="live">Gemini Live（実験）</option></select></label>
+          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto" disabled>Full Auto（現在利用できません）</option><option value="live" disabled>Gemini Live（現在利用できません）</option></select></label>
           <label>読み上げ方式<select value={props.settings.speechOutputProvider} onChange={(event) => props.onSettings({ speechOutputProvider: event.target.value as AppSettings["speechOutputProvider"] })}><option value="device">端末の読み上げ（無料・端末依存）</option><option value="geminiTts">Gemini TTS（高品質・API利用）</option></select></label>
           <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
           <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
