@@ -145,7 +145,7 @@ export async function generateSpeechWithGemini(input: {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
   const text = input.text.trim();
   if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
-  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
+  const model = input.model.trim().replace(/^models\//, "") || "gemini-2.5-flash-preview-tts";
   const body = {
     model,
     input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,

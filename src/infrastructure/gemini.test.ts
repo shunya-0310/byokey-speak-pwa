@@ -30,11 +30,13 @@ describe("gemini", () => {
 
     await expect(generateSpeechWithGemini({
       apiKey: "test-key",
-      model: "gemini-3.1-flash-tts-preview",
+      model: "",
       text: "Hello!",
       voice: "Kore"
     })).resolves.toEqual({ data: "cGNt", mimeType: "audio/l16", sampleRate: 24000, channels: 1 });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
-    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body).response_format).toEqual({ type: "audio" });
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(body.model).toBe("gemini-2.5-flash-preview-tts");
+    expect(body.response_format).toEqual({ type: "audio" });
   });
 });

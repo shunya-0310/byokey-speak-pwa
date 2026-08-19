@@ -369,6 +369,9 @@ export default function App() {
     if (settings.voiceMode === "fullAuto" || settings.voiceMode === "live") {
       settings = { ...settings, voiceMode: "manual" };
     }
+    if (settings.geminiTtsModel !== GEMINI_TTS_MODELS[0].id) {
+      settings = { ...settings, geminiTtsModel: GEMINI_TTS_MODELS[0].id };
+    }
     if (settings !== storedSettings) await saveSettings(settings);
     setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
     document.documentElement.dataset.theme = settings.theme;
@@ -2076,7 +2079,7 @@ function SettingsTab(props: {
           <h3>Gemini音声（Preview）</h3>
           <p className="small muted">Gemini TTSとGemini LiveはPreview機能です。読み上げテキストまたは音声が、利用者自身のGemini APIキーでGoogleのAPIへ送信され、API利用料が発生する場合があります。BYOKey Labのサーバーは経由しません。</p>
           {props.settings.speechOutputProvider === "geminiTts" && <div className="grid settings-grid">
-            <label>TTS model<select value={props.settings.geminiTtsModel} onChange={(event) => props.onSettings({ geminiTtsModel: event.target.value })}>{GEMINI_TTS_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}{model.recommended ? " (Recommended)" : ""}</option>)}</select></label>
+            <p className="small muted">TTS model: {GEMINI_TTS_MODELS[0].label}</p>
             <label>TTS voice<select value={props.settings.geminiTtsVoice} onChange={(event) => props.onSettings({ geminiTtsVoice: event.target.value })}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice}</option>)}</select></label>
           </div>}
           {props.settings.voiceMode === "live" && <div className="grid settings-grid">

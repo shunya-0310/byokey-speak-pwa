@@ -15,7 +15,7 @@ export const GEMINI_MODELS = [
 ] as const;
 
 export const GEMINI_TTS_MODELS = [
-  { id: "gemini-3.1-flash-tts-preview", label: "Gemini 3.1 Flash TTS Preview", recommended: true }
+  { id: "gemini-2.5-flash-preview-tts", label: "Gemini 2.5 Flash TTS", recommended: true }
 ] as const;
 
 export const GEMINI_LIVE_MODELS = [
