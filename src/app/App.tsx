@@ -50,11 +50,14 @@ import {
   deleteEquivalentVocabCard,
   ensureFirstChat,
   exportSnapshot,
+  generatedSpeechCacheId,
+  getCachedGeneratedSpeech,
   id,
   loadSettings,
   mergeEquivalentVocabCards,
   recordDailyStat,
   restoreSnapshot,
+  saveGeneratedSpeechCache,
   saveSettings,
   saveVocabCard,
   setEquivalentVocabFavorite
@@ -787,13 +790,6 @@ export default function App() {
         setError("Gemini TTSには、リスクと外部送信についての同意が必要です。");
         return;
       }
-      const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
-      if (!apiKey) {
-        setActiveTab("settings");
-        setError("APIキーを再入力してください。");
-        return;
-      }
-      setBusy("Gemini TTSで読み上げ音声を生成中です");
       setSpeakingMessageId(message.id);
       ttsAbortControllerRef.current?.abort();
       stopSpeaking();
@@ -811,6 +807,22 @@ export default function App() {
         })
       };
       try {
+        const cacheId = generatedSpeechCacheId(message.id, currentData.settings.geminiTtsModel, currentData.settings.geminiTtsVoice);
+        const cachedSpeech = await getCachedGeneratedSpeech(cacheId);
+        if (cachedSpeech) {
+          streamRef.current?.enqueue({ base64Audio: cachedSpeech.data, sampleRate: cachedSpeech.sampleRate, channels: cachedSpeech.channels });
+          streamRef.current?.finish();
+          return;
+        }
+        const apiKey = await getActiveApiKey(currentData.settings.apiKeyMode);
+        if (!apiKey) {
+          streamRef.current?.stop();
+          setSpeakingMessageId(null);
+          setActiveTab("settings");
+          setError("APIキーを再入力してください。");
+          return;
+        }
+        setBusy("Gemini TTSで読み上げ音声を生成中です");
         const speech = await generateSpeechWithGemini({
           apiKey,
           model: currentData.settings.geminiTtsModel,
@@ -818,6 +830,20 @@ export default function App() {
           voice: currentData.settings.geminiTtsVoice,
           signal: abortController.signal
         });
+        try {
+          await saveGeneratedSpeechCache({
+            id: cacheId,
+            messageId: message.id,
+            model: currentData.settings.geminiTtsModel,
+            voice: currentData.settings.geminiTtsVoice,
+            data: speech.data,
+            mimeType: speech.mimeType,
+            sampleRate: speech.sampleRate,
+            channels: speech.channels
+          });
+        } catch {
+          setNotice("音声は再生しますが、端末内に保存できませんでした。次回は再生成されます。");
+        }
         setBusy("");
         streamRef.current?.enqueue({ base64Audio: speech.data, sampleRate: speech.sampleRate, channels: speech.channels });
         streamRef.current?.finish();

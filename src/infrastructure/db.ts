@@ -21,6 +21,7 @@ export class ByokeyDb extends Dexie {
   analyses!: Table<ConversationAnalysis, string>;
   secrets!: Table<{ id: string; value: unknown }, string>;
   newsCache!: Table<{ id: string; raw: string; fetchedAt: number }, string>;
+  generatedSpeechCache!: Table<CachedGeneratedSpeech, string>;
 
   constructor() {
     super("byokey-speak-pwa");
@@ -35,10 +36,75 @@ export class ByokeyDb extends Dexie {
       secrets: "id",
       newsCache: "id, fetchedAt"
     });
+    this.version(2).stores({
+      settings: "id",
+      chats: "id, updatedAt, pinned, origin",
+      messages: "id, chatId, createdAt, role",
+      vocabCards: "id, expression, source, favorite, reviewed, createdAt",
+      learningNotes: "id, chatId, reviewed, createdAt",
+      dailyStats: "epochDay",
+      analyses: "id, createdAt",
+      secrets: "id",
+      newsCache: "id, fetchedAt",
+      generatedSpeechCache: "id, lastUsedAt, createdAt"
+    });
   }
 }
 
 export const db = new ByokeyDb();
+
+export type CachedGeneratedSpeech = {
+  id: string;
+  messageId: string;
+  model: string;
+  voice: string;
+  data: string;
+  mimeType: string;
+  sampleRate?: number;
+  channels?: number;
+  sizeBytes: number;
+  createdAt: number;
+  lastUsedAt: number;
+};
+
+const MAX_GENERATED_SPEECH_CACHE_BYTES = 25 * 1024 * 1024;
+const MAX_GENERATED_SPEECH_CACHE_ENTRIES = 60;
+
+export function generatedSpeechCacheId(messageId: string, model: string, voice: string) {
+  return `gemini-tts-v1:${messageId}:${model.trim().replace(/^models\//, "")}:${voice.trim() || "Kore"}`;
+}
+
+export async function getCachedGeneratedSpeech(id: string) {
+  const cached = await db.generatedSpeechCache.get(id);
+  if (!cached) return undefined;
+  const lastUsedAt = Date.now();
+  await db.generatedSpeechCache.update(id, { lastUsedAt });
+  return { ...cached, lastUsedAt };
+}
+
+export async function saveGeneratedSpeechCache(input: Omit<CachedGeneratedSpeech, "sizeBytes" | "createdAt" | "lastUsedAt">) {
+  const now = Date.now();
+  const record: CachedGeneratedSpeech = {
+    ...input,
+    // Base64 occupies 4 bytes for each 3 audio bytes. The original byte size
+    // is used so the local cache cap remains meaningful across browsers.
+    sizeBytes: Math.floor(input.data.length * 0.75),
+    createdAt: now,
+    lastUsedAt: now
+  };
+  await db.transaction("rw", db.generatedSpeechCache, async () => {
+    await db.generatedSpeechCache.put(record);
+    const cached = await db.generatedSpeechCache.toArray();
+    let totalBytes = cached.reduce((total, item) => total + item.sizeBytes, 0);
+    const oldestFirst = cached.sort((a, b) => a.lastUsedAt - b.lastUsedAt || a.createdAt - b.createdAt);
+    while (oldestFirst.length > MAX_GENERATED_SPEECH_CACHE_ENTRIES || totalBytes > MAX_GENERATED_SPEECH_CACHE_BYTES) {
+      const oldest = oldestFirst.shift();
+      if (!oldest) break;
+      await db.generatedSpeechCache.delete(oldest.id);
+      totalBytes -= oldest.sizeBytes;
+    }
+  });
+}
 
 export function id(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`;
@@ -164,20 +230,21 @@ export async function deleteEquivalentVocabCard(card: VocabCard) {
 }
 
 export async function clearLearningData() {
-  await db.transaction("rw", [db.chats, db.messages, db.vocabCards, db.learningNotes, db.dailyStats, db.analyses], async () => {
+  await db.transaction("rw", [db.chats, db.messages, db.vocabCards, db.learningNotes, db.dailyStats, db.analyses, db.generatedSpeechCache], async () => {
     await Promise.all([
       db.chats.clear(),
       db.messages.clear(),
       db.vocabCards.clear(),
       db.learningNotes.clear(),
       db.dailyStats.clear(),
-      db.analyses.clear()
+      db.analyses.clear(),
+      db.generatedSpeechCache.clear()
     ]);
   });
 }
 
 export async function clearAllLocalData() {
-  await db.transaction("rw", [db.settings, db.chats, db.messages, db.vocabCards, db.learningNotes, db.dailyStats, db.analyses, db.secrets, db.newsCache], async () => {
+  await db.transaction("rw", [db.settings, db.chats, db.messages, db.vocabCards, db.learningNotes, db.dailyStats, db.analyses, db.secrets, db.newsCache, db.generatedSpeechCache], async () => {
     await Promise.all([
       db.settings.clear(),
       db.chats.clear(),
@@ -187,7 +254,8 @@ export async function clearAllLocalData() {
       db.dailyStats.clear(),
       db.analyses.clear(),
       db.secrets.clear(),
-      db.newsCache.clear()
+      db.newsCache.clear(),
+      db.generatedSpeechCache.clear()
     ]);
   });
 }
@@ -234,14 +302,15 @@ export async function exportSnapshot() {
 export async function restoreSnapshot(snapshot: Awaited<ReturnType<typeof exportSnapshot>>) {
   if (snapshot.contentVersion !== 1) throw new Error("このバックアップ形式には対応していません。");
   const current = await loadSettings();
-  await db.transaction("rw", [db.settings, db.chats, db.messages, db.vocabCards, db.learningNotes, db.dailyStats, db.analyses], async () => {
+  await db.transaction("rw", [db.settings, db.chats, db.messages, db.vocabCards, db.learningNotes, db.dailyStats, db.analyses, db.generatedSpeechCache], async () => {
     await Promise.all([
       db.chats.clear(),
       db.messages.clear(),
       db.vocabCards.clear(),
       db.learningNotes.clear(),
       db.dailyStats.clear(),
-      db.analyses.clear()
+      db.analyses.clear(),
+      db.generatedSpeechCache.clear()
     ]);
     await Promise.all([
       db.chats.bulkPut(snapshot.chats),
