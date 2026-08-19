@@ -128,12 +128,19 @@ export async function transcribeAudioWithGemini(input: {
   return collectTexts(JSON.parse(raw)).trim().replace(/^["「]|["」]$/g, "");
 }
 
+export type GeneratedSpeech = {
+  data: string;
+  mimeType: string;
+  sampleRate?: number;
+  channels?: number;
+};
+
 export async function generateSpeechWithGemini(input: {
   apiKey: string;
   model: string;
   text: string;
   voice: string;
-}) {
+}): Promise<GeneratedSpeech> {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
   const text = input.text.trim();
   if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
@@ -171,7 +178,9 @@ export async function generateSpeechWithGemini(input: {
   if (!audio?.data) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
   return {
     data: audio.data,
-    mimeType: audio.mimeType || "audio/pcm;rate=24000"
+    mimeType: audio.mimeType || "audio/l16;rate=24000",
+    sampleRate: audio.sampleRate,
+    channels: audio.channels
   };
 }
 
@@ -243,7 +252,14 @@ function collectSources(value: unknown, output = new Map<string, LlmSource>()): 
   return [...output.values()].slice(0, 6);
 }
 
-function collectAudio(value: unknown): { data: string; mimeType?: string } | null {
+type AudioPayload = {
+  data: string;
+  mimeType?: string;
+  sampleRate?: number;
+  channels?: number;
+};
+
+function collectAudio(value: unknown): AudioPayload | null {
   if (!value) return null;
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -255,18 +271,43 @@ function collectAudio(value: unknown): { data: string; mimeType?: string } | nul
   if (typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const outputAudio = (record.output_audio ?? record.outputAudio) as Record<string, unknown> | undefined;
-  if (outputAudio && typeof outputAudio.data === "string") {
-    return { data: outputAudio.data, mimeType: typeof outputAudio.mimeType === "string" ? outputAudio.mimeType : typeof outputAudio.mime_type === "string" ? outputAudio.mime_type : undefined };
+  const outputAudioPayload = audioPayload(outputAudio);
+  if (outputAudioPayload) return outputAudioPayload;
+  // Interactions REST responses return audio in a model_output step's content
+  // array. output_audio is a convenience property added by the SDK, so it is
+  // absent when this browser app calls the REST endpoint directly.
+  if (record.type === "audio") {
+    const contentAudioPayload = audioPayload(record);
+    if (contentAudioPayload) return contentAudioPayload;
   }
   const inlineData = (record.inlineData ?? record.inline_data) as Record<string, unknown> | undefined;
-  if (inlineData && typeof inlineData.data === "string") {
-    return { data: inlineData.data, mimeType: typeof inlineData.mimeType === "string" ? inlineData.mimeType : typeof inlineData.mime_type === "string" ? inlineData.mime_type : undefined };
-  }
+  const inlineAudioPayload = audioPayload(inlineData);
+  if (inlineAudioPayload) return inlineAudioPayload;
   for (const child of Object.values(record)) {
     const found = collectAudio(child);
     if (found) return found;
   }
   return null;
+}
+
+function audioPayload(value: Record<string, unknown> | undefined): AudioPayload | null {
+  if (!value || typeof value.data !== "string" || !value.data) return null;
+  const mimeType = typeof value.mimeType === "string"
+    ? value.mimeType
+    : typeof value.mime_type === "string"
+      ? value.mime_type
+      : undefined;
+  const sampleRate = typeof value.sampleRate === "number"
+    ? value.sampleRate
+    : typeof value.sample_rate === "number"
+      ? value.sample_rate
+      : undefined;
+  return {
+    data: value.data,
+    mimeType,
+    sampleRate,
+    channels: typeof value.channels === "number" ? value.channels : undefined
+  };
 }
 
 function blobToBase64(blob: Blob) {

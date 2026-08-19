@@ -248,11 +248,11 @@ export function speakCoachText(text: string, gender: VoiceGender, onEnd?: () => 
   return true;
 }
 
-export function playGeneratedSpeech(input: { base64Audio: string; mimeType: string; onEnd?: () => void; rate?: number }) {
+export function playGeneratedSpeech(input: { base64Audio: string; mimeType: string; sampleRate?: number; channels?: number; onEnd?: () => void; rate?: number }) {
   stopSpeaking();
   const audioBytes = base64ToBytes(input.base64Audio);
-  const blob = input.mimeType.startsWith("audio/pcm")
-    ? new Blob([wrapPcmAsWav(audioBytes, sampleRateFromMime(input.mimeType) ?? 24000)], { type: "audio/wav" })
+  const blob = isRawPcmMimeType(input.mimeType)
+    ? new Blob([wrapPcmAsWav(audioBytes, input.sampleRate ?? sampleRateFromMime(input.mimeType) ?? 24000, input.channels ?? 1)], { type: "audio/wav" })
     : new Blob([audioBytes], { type: input.mimeType || "audio/wav" });
   currentGeneratedAudioUrl = URL.createObjectURL(blob);
   currentGeneratedAudio = new Audio(currentGeneratedAudioUrl);
@@ -300,7 +300,12 @@ function sampleRateFromMime(mimeType: string) {
   return match ? Number(match[1]) : undefined;
 }
 
-function wrapPcmAsWav(pcmBytes: Uint8Array, sampleRate: number) {
+function isRawPcmMimeType(mimeType: string) {
+  return /^audio\/(pcm|l16)(?:;|$)/i.test(mimeType);
+}
+
+function wrapPcmAsWav(pcmBytes: Uint8Array, sampleRate: number, channels: number) {
+  const safeChannels = Math.max(1, Math.floor(channels));
   const buffer = new ArrayBuffer(44 + pcmBytes.byteLength);
   const view = new DataView(buffer);
   writeAscii(view, 0, "RIFF");
@@ -309,10 +314,10 @@ function wrapPcmAsWav(pcmBytes: Uint8Array, sampleRate: number) {
   writeAscii(view, 12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
+  view.setUint16(22, safeChannels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
+  view.setUint32(28, sampleRate * safeChannels * 2, true);
+  view.setUint16(32, safeChannels * 2, true);
   view.setUint16(34, 16, true);
   writeAscii(view, 36, "data");
   view.setUint32(40, pcmBytes.byteLength, true);

@@ -797,6 +797,8 @@ export default function App() {
         playGeneratedSpeech({
           base64Audio: speech.data,
           mimeType: speech.mimeType,
+          sampleRate: speech.sampleRate,
+          channels: speech.channels,
           rate: currentData.settings.voiceRate,
           onEnd: () => {
             setSpeakingMessageId((current) => current === message.id ? null : current);

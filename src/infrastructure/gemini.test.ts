@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { classifyGeminiError, parseCoachReply } from "./gemini";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { classifyGeminiError, generateSpeechWithGemini, parseCoachReply } from "./gemini";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("gemini", () => {
   it("classifies errors without exposing raw body", () => {
@@ -12,5 +16,23 @@ describe("gemini", () => {
     const parsed = parseCoachReply("Natural reply: Hi there.\nCoach notes: Nice.\nJapanese explanation: こんにちは。\nBetter options: Sounds good.\nVocab: phrase | 表現");
     expect(parsed.reply).toBe("Hi there.");
     expect(parsed.vocabulary).toEqual([{ expression: "phrase", meaning: "表現" }]);
+  });
+
+  it("reads audio from the standard Interactions REST model_output content", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "completed",
+      steps: [{
+        type: "model_output",
+        content: [{ type: "audio", data: "cGNt", mime_type: "audio/l16", sample_rate: 24000, channels: 1 }]
+      }]
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateSpeechWithGemini({
+      apiKey: "test-key",
+      model: "gemini-3.1-flash-tts-preview",
+      text: "Hello!",
+      voice: "Kore"
+    })).resolves.toEqual({ data: "cGNt", mimeType: "audio/l16", sampleRate: 24000, channels: 1 });
   });
 });
