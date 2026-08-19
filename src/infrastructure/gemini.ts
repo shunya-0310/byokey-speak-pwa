@@ -206,7 +206,10 @@ export async function streamSpeechWithGemini(input: {
 
   let response: Response;
   try {
-    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+    // The Interactions SDK explicitly adds alt=sse for streamed requests.
+    // Without it the REST endpoint returns one completed JSON object, which
+    // has no incremental step.delta events to play.
+    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

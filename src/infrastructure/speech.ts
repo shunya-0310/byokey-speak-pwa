@@ -281,6 +281,9 @@ export function startGeneratedSpeechStream(input: { sampleRate?: number; channel
   const sampleRate = input.sampleRate ?? 24000;
   const channels = Math.max(1, Math.floor(input.channels ?? 1));
   const context = new AudioContext();
+  // This function is called directly from the read-aloud button handler.
+  // Resume here while the user activation is still valid, especially on iOS.
+  void context.resume();
   const sources = new Set<AudioBufferSourceNode>();
   let nextStartTime = 0;
   let finished = false;

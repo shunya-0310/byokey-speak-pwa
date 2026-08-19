@@ -844,7 +844,7 @@ export default function App() {
         if (!fallbackStarted) streamRef.current?.finish();
       } catch (caught) {
         if (!fallbackStarted && !abortController.signal.aborted) {
-          if (streamRef.current) {
+          if (started && streamRef.current) {
             streamRef.current.finish();
             setNotice("Gemini TTSの音声生成が途中で終了しました。再生できた部分のみ読み上げます。");
           } else {

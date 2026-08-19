@@ -52,5 +52,6 @@ describe("gemini", () => {
 
     expect(chunks).toEqual([{ data: "Y2h1bms=", mimeType: "audio/l16" }]);
     expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body).stream).toBe(true);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse");
   });
 });
