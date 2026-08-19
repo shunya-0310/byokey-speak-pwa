@@ -35,6 +35,6 @@ describe("gemini", () => {
       voice: "Kore"
     })).resolves.toEqual({ data: "cGNt", mimeType: "audio/l16", sampleRate: 24000, channels: 1 });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
-    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body).response_format).toEqual({ type: "audio", delivery: "inline", mime_type: "audio/l16", sample_rate: 24000 });
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body).response_format).toEqual({ type: "audio" });
   });
 });

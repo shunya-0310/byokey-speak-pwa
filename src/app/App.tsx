@@ -842,8 +842,18 @@ export default function App() {
       } catch (caught) {
         if (!fallbackStarted && !abortController.signal.aborted) {
           streamRef.current?.stop();
-          setSpeakingMessageId(null);
-          setError((caught as Error).message);
+          const fallbackAvailable = speakCoachText(spokenText, currentData.settings.voiceGender, () => {
+            setSpeakingMessageId((current) => current === message.id ? null : current);
+            afterEnd?.();
+          }, currentData.settings.voiceRate);
+          if (fallbackAvailable) {
+            fallbackStarted = true;
+            setBusy("");
+            setNotice("Gemini TTSを開始できなかったため、端末の読み上げに切り替えました。");
+          } else {
+            setSpeakingMessageId(null);
+            setError((caught as Error).message);
+          }
         }
       } finally {
         window.clearTimeout(fallbackTimer);

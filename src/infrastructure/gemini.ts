@@ -149,7 +149,10 @@ export async function generateSpeechWithGemini(input: {
   const body = {
     model,
     input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
-    response_format: { type: "audio", delivery: "inline", mime_type: "audio/l16", sample_rate: 24000 },
+    // Keep this aligned with the official non-streaming REST example.
+    // The additional output-format fields are rejected by some Preview TTS
+    // configurations even though they are documented for the audio format.
+    response_format: { type: "audio" },
     generation_config: {
       speech_config: [{ voice: input.voice || "Kore" }]
     }
