@@ -60,12 +60,12 @@ import {
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
-import { generateSpeechWithGemini, generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { startGeminiLiveSession, type GeminiLiveSession, type GeminiLiveStatus } from "../infrastructure/live";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
-import { canRecordAudio, canRecognizeSpeech, playGeneratedSpeech, shouldUseGeminiMicFallback, speakCoachText, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
+import { canRecordAudio, canRecognizeSpeech, shouldUseGeminiMicFallback, speakCoachText, startGeneratedSpeechStream, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type GeneratedSpeechStream, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
@@ -333,6 +333,7 @@ export default function App() {
   const speechSessionRef = useRef<SpeechRecognitionSession | null>(null);
   const micContextRef = useRef<{ target: "chat" | "assist"; language: MicLanguage; autoSubmit: boolean; baseSource: ChatMessage["inputSource"] } | null>(null);
   const autoSubmitTimerRef = useRef<number | null>(null);
+  const ttsAbortControllerRef = useRef<AbortController | null>(null);
   const liveSessionRef = useRef<GeminiLiveSession | null>(null);
   const liveInputTranscriptRef = useRef("");
   const liveOutputTranscriptRef = useRef("");
@@ -768,6 +769,8 @@ export default function App() {
   }
 
   function stopCurrentSpeech() {
+    ttsAbortControllerRef.current?.abort();
+    ttsAbortControllerRef.current = null;
     stopSpeaking();
     setSpeakingMessageId(null);
   }
@@ -787,29 +790,72 @@ export default function App() {
       }
       setBusy("Gemini TTSで読み上げ音声を生成中です");
       setSpeakingMessageId(message.id);
-      try {
-        const speech = await generateSpeechWithGemini({
-          apiKey,
-          model: currentData.settings.geminiTtsModel,
-          text: naturalReplyOf(message.text),
-          voice: currentData.settings.geminiTtsVoice
-        });
-        playGeneratedSpeech({
-          base64Audio: speech.data,
-          mimeType: speech.mimeType,
-          sampleRate: speech.sampleRate,
-          channels: speech.channels,
-          rate: currentData.settings.voiceRate,
+      ttsAbortControllerRef.current?.abort();
+      stopSpeaking();
+      const abortController = new AbortController();
+      ttsAbortControllerRef.current = abortController;
+      let started = false;
+      let fallbackStarted = false;
+      const spokenText = naturalReplyOf(message.text);
+      // Create and resume AudioContext while this click still has user activation.
+      // Creating it after the network response can be rejected by Safari's autoplay policy.
+      const streamRef: { current: GeneratedSpeechStream | null } = {
+        current: startGeneratedSpeechStream({
           onEnd: () => {
             setSpeakingMessageId((current) => current === message.id ? null : current);
             afterEnd?.();
           }
-        });
-      } catch (caught) {
-        setSpeakingMessageId(null);
-        setError((caught as Error).message);
-      } finally {
+        })
+      };
+      const fallbackTimer = window.setTimeout(() => {
+        if (started || fallbackStarted) return;
+        fallbackStarted = true;
+        abortController.abort();
+        streamRef.current?.stop();
         setBusy("");
+        const fallbackAvailable = speakCoachText(spokenText, currentData.settings.voiceGender, () => {
+          setSpeakingMessageId((current) => current === message.id ? null : current);
+          afterEnd?.();
+        }, currentData.settings.voiceRate);
+        if (fallbackAvailable) {
+          setNotice("Gemini TTSの開始に時間がかかったため、端末の読み上げに切り替えました。");
+        } else {
+          setSpeakingMessageId(null);
+          setError("Gemini TTSの開始に時間がかかっています。もう一度お試しください。");
+        }
+      }, 5000);
+      try {
+        await streamSpeechWithGemini({
+          apiKey,
+          model: currentData.settings.geminiTtsModel,
+          text: spokenText,
+          voice: currentData.settings.geminiTtsVoice,
+          signal: abortController.signal,
+          onAudio: (chunk) => {
+            if (fallbackStarted) return;
+            if (!started) {
+              started = true;
+              window.clearTimeout(fallbackTimer);
+              setBusy("");
+            }
+            streamRef.current?.enqueue({ base64Audio: chunk.data, sampleRate: chunk.sampleRate, channels: chunk.channels });
+          }
+        });
+        if (!fallbackStarted) streamRef.current?.finish();
+      } catch (caught) {
+        if (!fallbackStarted && !abortController.signal.aborted) {
+          if (streamRef.current) {
+            streamRef.current.finish();
+            setNotice("Gemini TTSの音声生成が途中で終了しました。再生できた部分のみ読み上げます。");
+          } else {
+            setSpeakingMessageId(null);
+            setError((caught as Error).message);
+          }
+        }
+      } finally {
+        window.clearTimeout(fallbackTimer);
+        if (ttsAbortControllerRef.current === abortController) ttsAbortControllerRef.current = null;
+        if (!started && !fallbackStarted) setBusy("");
       }
       return;
     }

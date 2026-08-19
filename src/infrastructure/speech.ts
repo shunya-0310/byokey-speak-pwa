@@ -5,6 +5,7 @@ type RecognitionCtor = new () => SpeechRecognition;
 type WebKitNavigator = Navigator & { standalone?: boolean };
 let currentGeneratedAudio: HTMLAudioElement | null = null;
 let currentGeneratedAudioUrl = "";
+let currentGeneratedSpeechStream: GeneratedSpeechStream | null = null;
 
 interface SpeechRecognition extends EventTarget {
   lang: string;
@@ -269,8 +270,85 @@ export function playGeneratedSpeech(input: { base64Audio: string; mimeType: stri
   return true;
 }
 
+export type GeneratedSpeechStream = {
+  enqueue: (input: { base64Audio: string; sampleRate?: number; channels?: number }) => void;
+  finish: () => void;
+  stop: () => void;
+};
+
+export function startGeneratedSpeechStream(input: { sampleRate?: number; channels?: number; onEnd?: () => void }): GeneratedSpeechStream {
+  stopSpeaking();
+  const sampleRate = input.sampleRate ?? 24000;
+  const channels = Math.max(1, Math.floor(input.channels ?? 1));
+  const context = new AudioContext();
+  const sources = new Set<AudioBufferSourceNode>();
+  let nextStartTime = 0;
+  let finished = false;
+  let stopped = false;
+
+  const completeIfReady = () => {
+    if (!stopped && finished && sources.size === 0) {
+      stopped = true;
+      if (currentGeneratedSpeechStream === stream) currentGeneratedSpeechStream = null;
+      void context.close();
+      input.onEnd?.();
+    }
+  };
+
+  const stream: GeneratedSpeechStream = {
+    enqueue: ({ base64Audio, sampleRate: chunkSampleRate, channels: chunkChannels }) => {
+      if (stopped) return;
+      const bytes = base64ToBytes(base64Audio);
+      const activeSampleRate = chunkSampleRate ?? sampleRate;
+      const activeChannels = Math.max(1, Math.floor(chunkChannels ?? channels));
+      const samples = pcm16ToFloat32(bytes);
+      const frameCount = Math.floor(samples.length / activeChannels);
+      if (!frameCount) return;
+      const buffer = context.createBuffer(activeChannels, frameCount, activeSampleRate);
+      for (let channel = 0; channel < activeChannels; channel += 1) {
+        const channelSamples = new Float32Array(frameCount);
+        for (let frame = 0; frame < frameCount; frame += 1) channelSamples[frame] = samples[frame * activeChannels + channel] ?? 0;
+        buffer.copyToChannel(channelSamples, channel);
+      }
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      sources.add(source);
+      source.onended = () => {
+        sources.delete(source);
+        completeIfReady();
+      };
+      const startAt = Math.max(context.currentTime + 0.03, nextStartTime);
+      source.start(startAt);
+      nextStartTime = startAt + buffer.duration;
+      void context.resume();
+    },
+    finish: () => {
+      finished = true;
+      completeIfReady();
+    },
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      for (const source of sources) {
+        try {
+          source.stop();
+        } catch {
+          // The source may already be stopped.
+        }
+      }
+      sources.clear();
+      if (currentGeneratedSpeechStream === stream) currentGeneratedSpeechStream = null;
+      void context.close();
+    }
+  };
+  currentGeneratedSpeechStream = stream;
+  return stream;
+}
+
 export function stopSpeaking() {
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  currentGeneratedSpeechStream?.stop();
   if (currentGeneratedAudio) {
     currentGeneratedAudio.pause();
     currentGeneratedAudio.currentTime = 0;
@@ -293,6 +371,15 @@ function base64ToBytes(base64: string) {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function pcm16ToFloat32(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const samples = new Float32Array(Math.floor(bytes.byteLength / 2));
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = view.getInt16(index * 2, true) / 0x8000;
+  }
+  return samples;
 }
 
 function sampleRateFromMime(mimeType: string) {
