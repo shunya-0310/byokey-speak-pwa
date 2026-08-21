@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyGeminiError, generateSpeechWithGemini, parseCoachReply } from "./gemini";
+import { classifyGeminiError, generateSpeechWithGemini, parseCoachReply, streamSpeechWithGemini } from "./gemini";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -36,7 +36,31 @@ describe("gemini", () => {
     })).resolves.toEqual({ data: "cGNt", mimeType: "audio/l16", sampleRate: 24000, channels: 1 });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
     const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body);
-    expect(body.model).toBe("gemini-2.5-flash-preview-tts");
+    expect(body.model).toBe("gemini-3.1-flash-tts-preview");
     expect(body.response_format).toEqual({ type: "audio" });
+  });
+
+  it("plays TTS chunks as Gemini sends its SSE stream and combines them for the local cache", async () => {
+    const payload = [
+      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"YQ==","mime_type":"audio/l16;rate=24000","sample_rate":24000}}',
+      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"Yg==","mime_type":"audio/l16;rate=24000","sample_rate":24000}}',
+      "data: [DONE]"
+    ].join("\n\n");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(payload, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const received: string[] = [];
+
+    await expect(streamSpeechWithGemini({
+      apiKey: "test-key",
+      model: "gemini-3.1-flash-tts-preview",
+      text: "Hello!",
+      voice: "Kore",
+      onAudio: (chunk) => received.push(chunk.data)
+    })).resolves.toEqual({ data: "YWI=", mimeType: "audio/l16;rate=24000", sampleRate: 24000, channels: undefined });
+
+    expect(received).toEqual(["YQ==", "Yg=="]);
+    const request = fetchMock.mock.calls[0]?.[1];
+    expect(JSON.parse(request.body).stream).toBe(true);
+    expect(request.headers["Api-Revision"]).toBe("2026-05-20");
   });
 });

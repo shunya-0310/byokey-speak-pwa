@@ -20,6 +20,7 @@ Web Cryptoで暗号化しても、実行中の正当なアプリコードはキ�
 ## 残余リスク
 
 - GoogleがCORS、認証、APIキー方針を変更すると通信できなくなる。
+- Gemini TTSとGemini LiveはPreview機能であり、速度、モデルID、レート制限、料金がGoogle側で変更されうる。
 - ブラウザまたは利用者操作でIndexedDBが削除される。
 - iOSやFirefoxでは音声入力、通知、PWA更新の挙動に差がある。
 - 静的ホストは通常のアクセスログを処理しうる。

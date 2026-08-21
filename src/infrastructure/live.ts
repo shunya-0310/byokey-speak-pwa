@@ -17,6 +17,7 @@ type LiveInput = {
 };
 
 type LiveServerMessage = {
+  error?: { message?: string };
   serverContent?: {
     inputTranscription?: { text?: string };
     outputTranscription?: { text?: string };
@@ -45,9 +46,13 @@ export async function startGeminiLiveSession(input: LiveInput): Promise<GeminiLi
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const audioContext = new AudioContext();
   const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(4096, 1, 1);
+  const processor = audioContext.createScriptProcessor(2048, 1, 1);
+  let captureStarted = false;
+  let cleanedUp = false;
 
   const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     try {
       processor.disconnect();
       source.disconnect();
@@ -89,8 +94,14 @@ export async function startGeminiLiveSession(input: LiveInput): Promise<GeminiLi
         thinkingConfig: { thinkingLevel: "low" }
       }
     }));
+  };
+
+  const startCapture = () => {
+    if (captureStarted || cleanedUp) return;
+    captureStarted = true;
     source.connect(processor);
     processor.connect(audioContext.destination);
+    void audioContext.resume();
     input.onStatus("listening");
   };
 
@@ -101,7 +112,15 @@ export async function startGeminiLiveSession(input: LiveInput): Promise<GeminiLi
     } catch {
       return;
     }
-    if (message.setupComplete) input.onStatus("connected");
+    if (message.error?.message) {
+      input.onError(new Error(`Gemini Live API: ${message.error.message}`));
+      websocket.close();
+      return;
+    }
+    if (message.setupComplete) {
+      input.onStatus("connected");
+      startCapture();
+    }
     const content = message.serverContent;
     const inputText = content?.inputTranscription?.text?.trim();
     if (inputText) input.onInputTranscript(inputText);
@@ -116,7 +135,7 @@ export async function startGeminiLiveSession(input: LiveInput): Promise<GeminiLi
   };
 
   websocket.onerror = () => {
-    input.onError(new Error("Gemini Live APIの接続に失敗しました。"));
+    if (!cleanedUp) input.onError(new Error("Gemini Live APIの接続に失敗しました。APIキー、対応モデル、ネットワーク接続を確認してください。"));
   };
   websocket.onclose = cleanup;
 

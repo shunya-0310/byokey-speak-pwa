@@ -15,12 +15,11 @@ export const GEMINI_MODELS = [
 ] as const;
 
 export const GEMINI_TTS_MODELS = [
-  { id: "gemini-2.5-flash-preview-tts", label: "Gemini 2.5 Flash TTS", recommended: true }
+  { id: "gemini-3.1-flash-tts-preview", label: "Gemini 3.1 Flash TTS（ストリーミング）", recommended: true }
 ] as const;
 
 export const GEMINI_LIVE_MODELS = [
-  { id: "gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live Preview", recommended: true },
-  { id: "gemini-2.5-flash-native-audio-preview-12-2025", label: "Gemini 2.5 Flash Native Audio Preview", recommended: false }
+  { id: "gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live Preview", recommended: true }
 ] as const;
 
 export const GEMINI_TTS_VOICES = [

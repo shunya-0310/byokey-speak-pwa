@@ -63,7 +63,7 @@ import {
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
-import { generateSpeechWithGemini, generateWithGemini, parseAnalysis, parseCoachReply, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { startGeminiLiveSession, type GeminiLiveSession, type GeminiLiveStatus } from "../infrastructure/live";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
@@ -364,13 +364,16 @@ export default function App() {
     let settings = storedSettings.hasApiKey === keyIsReadable
       ? storedSettings
       : { ...storedSettings, hasApiKey: keyIsReadable };
-    // Full Auto and Gemini Live are not reliable in the current browser-only
-    // implementation. Move older saved settings back to the usable manual mode.
-    if (settings.voiceMode === "fullAuto" || settings.voiceMode === "live") {
+    // Full Auto needs background microphone behaviour that browsers do not
+    // reliably provide. Gemini Live remains an explicit selectable mode.
+    if (settings.voiceMode === "fullAuto") {
       settings = { ...settings, voiceMode: "manual" };
     }
     if (settings.geminiTtsModel !== GEMINI_TTS_MODELS[0].id) {
       settings = { ...settings, geminiTtsModel: GEMINI_TTS_MODELS[0].id };
+    }
+    if (settings.liveModel !== GEMINI_LIVE_MODELS[0].id) {
+      settings = { ...settings, liveModel: GEMINI_LIVE_MODELS[0].id };
     }
     if (settings !== storedSettings) await saveSettings(settings);
     setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
@@ -768,7 +771,7 @@ export default function App() {
       stopLiveConversation();
     }
     await updateSettings({ voiceMode: next });
-    setNotice(next === "off" ? "Voice Mode: Off" : "Voice Mode: マニュアル送信");
+    setNotice(next === "off" ? "Voice Mode: Off" : next === "manual" ? "Voice Mode: マニュアル送信" : "Voice Mode: Gemini Live");
   }
 
   function toggleWebSearch() {
@@ -828,12 +831,20 @@ export default function App() {
           return;
         }
         setBusy("Gemini TTSで読み上げ音声を生成中です");
-        const speech = await generateSpeechWithGemini({
+        let playbackStarted = false;
+        const speech = await streamSpeechWithGemini({
           apiKey,
           model: currentData.settings.geminiTtsModel,
           text: spokenText,
           voice: currentData.settings.geminiTtsVoice,
-          signal: abortController.signal
+          signal: abortController.signal,
+          onAudio: (chunk) => {
+            if (!playbackStarted) {
+              playbackStarted = true;
+              setBusy("");
+            }
+            if (!abortController.signal.aborted) streamRef.current?.enqueue({ base64Audio: chunk.data, sampleRate: chunk.sampleRate, channels: chunk.channels });
+          }
         });
         if (abortController.signal.aborted) return;
         try {
@@ -852,7 +863,6 @@ export default function App() {
         }
         if (abortController.signal.aborted) return;
         setBusy("");
-        streamRef.current?.enqueue({ base64Audio: speech.data, sampleRate: speech.sampleRate, channels: speech.channels });
         streamRef.current?.finish();
       } catch (caught) {
         if (!abortController.signal.aborted) {
@@ -1466,6 +1476,7 @@ function mergeInputSource(current: ChatMessage["inputSource"], next: ChatMessage
 
 function nextVoiceMode(current: AppSettings["voiceMode"]): AppSettings["voiceMode"] {
   if (current === "off") return "manual";
+  if (current === "manual") return "live";
   return "off";
 }
 
@@ -2070,7 +2081,7 @@ function SettingsTab(props: {
       </div>}
       {section === "coach" && <div className="stack">
         <article className="grid settings-grid">
-          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto" disabled>Full Auto（現在利用できません）</option><option value="live" disabled>Gemini Live（現在利用できません）</option></select></label>
+          <label>Voice mode<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">手動送信</option><option value="fullAuto" disabled>Full Auto（現在利用できません）</option><option value="live">Gemini Live（高品質・リアルタイム）</option></select></label>
           <label>読み上げ方式<select value={props.settings.speechOutputProvider} onChange={(event) => props.onSettings({ speechOutputProvider: event.target.value as AppSettings["speechOutputProvider"] })}><option value="device">端末の読み上げ（無料・端末依存）</option><option value="geminiTts">Gemini TTS（高品質・API利用）</option></select></label>
           <label>Voice<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
           <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>

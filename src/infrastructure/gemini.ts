@@ -135,6 +135,8 @@ export type GeneratedSpeech = {
   channels?: number;
 };
 
+type SpeechChunk = GeneratedSpeech;
+
 export async function generateSpeechWithGemini(input: {
   apiKey: string;
   model: string;
@@ -145,7 +147,7 @@ export async function generateSpeechWithGemini(input: {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
   const text = input.text.trim();
   if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
-  const model = input.model.trim().replace(/^models\//, "") || "gemini-2.5-flash-preview-tts";
+  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
   const body = {
     model,
     input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
@@ -187,6 +189,73 @@ export async function generateSpeechWithGemini(input: {
     mimeType: audio.mimeType || "audio/l16;rate=24000",
     sampleRate: audio.sampleRate,
     channels: audio.channels
+  };
+}
+
+/** Streams raw PCM chunks directly from Gemini 3.1 Flash TTS. */
+export async function streamSpeechWithGemini(input: {
+  apiKey: string;
+  model: string;
+  text: string;
+  voice: string;
+  signal?: AbortSignal;
+  onAudio: (chunk: SpeechChunk) => void;
+}): Promise<GeneratedSpeech> {
+  if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
+  const text = input.text.trim();
+  if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
+  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
+  const body = {
+    model,
+    input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
+    response_format: { type: "audio" },
+    generation_config: { speech_config: [{ voice: input.voice || "Kore" }] },
+    stream: true
+  };
+  let response: Response;
+  try {
+    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Api-Revision": "2026-05-20",
+        "x-goog-api-key": input.apiKey
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: input.signal
+    });
+  } catch (caught) {
+    if (input.signal?.aborted) throw caught;
+    throw new LlmError("network", userMessageForError("network"));
+  }
+  if (!response.ok) {
+    const raw = await response.text();
+    const kind = classifyGeminiError(response.status, raw);
+    throw new LlmError(kind, userMessageForError(kind));
+  }
+  if (!response.body) throw new LlmError("provider", "Gemini TTSのストリームを開始できませんでした。");
+
+  const chunks: SpeechChunk[] = [];
+  await readSseJson(response.body, (payload) => {
+    const audio = collectAudio(payload);
+    if (!audio?.data) return;
+    const chunk: SpeechChunk = {
+      data: audio.data,
+      mimeType: audio.mimeType || "audio/l16;rate=24000",
+      sampleRate: audio.sampleRate,
+      channels: audio.channels
+    };
+    chunks.push(chunk);
+    input.onAudio(chunk);
+  }, input.signal);
+  if (!chunks.length) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
+  const first = chunks[0];
+  return {
+    data: concatBase64Pcm(chunks.map((chunk) => chunk.data)),
+    mimeType: first.mimeType,
+    sampleRate: first.sampleRate,
+    channels: first.channels
   };
 }
 
@@ -314,6 +383,64 @@ function audioPayload(value: Record<string, unknown> | undefined): AudioPayload 
     sampleRate,
     channels: typeof value.channels === "number" ? value.channels : undefined
   };
+}
+
+async function readSseJson(stream: ReadableStream<Uint8Array>, onEvent: (payload: unknown) => void, signal?: AbortSignal) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const { done, value } = await reader.read();
+      pending += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      const events = pending.split(/\r?\n\r?\n/);
+      pending = events.pop() ?? "";
+      for (const event of events) parseSseEvent(event, onEvent);
+      if (done) break;
+    }
+    pending += decoder.decode();
+    if (pending.trim()) parseSseEvent(pending, onEvent);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function parseSseEvent(event: string, onEvent: (payload: unknown) => void) {
+  const data = event.split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n");
+  if (!data || data === "[DONE]") return;
+  try {
+    onEvent(JSON.parse(data));
+  } catch {
+    // Metadata events do not contain playable audio.
+  }
+}
+
+function concatBase64Pcm(parts: string[]) {
+  const bytes = parts.map(base64ToBytes);
+  const totalLength = bytes.reduce((total, part) => total + part.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const part of bytes) {
+    merged.set(part, offset);
+    offset += part.length;
+  }
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < merged.length; index += chunkSize) {
+    binary += String.fromCharCode(...merged.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function blobToBase64(blob: Blob) {
