@@ -28,6 +28,7 @@ describe("stats", () => {
 
   it("extracts natural reply for TTS", () => {
     expect(naturalReplyOf("Natural reply: Hi!\nCoach notes: None")).toBe("Hi!");
+    expect(naturalReplyOf("Let's talk about this news.\n\nSources: Example News - https://example.com")).toBe("Let's talk about this news.");
   });
 
   it("counts active vocabulary use with word boundaries", () => {

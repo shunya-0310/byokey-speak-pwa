@@ -72,7 +72,17 @@ export function clearSessionApiKey() {
 }
 
 export async function getActiveApiKey(mode: "persistent" | "session") {
-  return mode === "session" ? loadSessionApiKey() : loadPersistentApiKey();
+  if (mode === "session") {
+    const sessionKey = loadSessionApiKey();
+    if (sessionKey) return sessionKey;
+    return loadPersistentApiKey().catch(() => "");
+  }
+  const persistentKey = await loadPersistentApiKey().catch(() => "");
+  return persistentKey || loadSessionApiKey();
+}
+
+export async function hasActiveApiKey(mode: "persistent" | "session") {
+  return Boolean((await getActiveApiKey(mode)).trim());
 }
 
 export async function deriveBackupKey(passphrase: string, salt: Uint8Array, iterations: number) {

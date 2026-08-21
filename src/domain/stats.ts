@@ -55,7 +55,7 @@ export function naturalReplyOf(text: string) {
   const lower = text.toLowerCase();
   const label = "natural reply:";
   const from = lower.indexOf(label) >= 0 ? lower.indexOf(label) + label.length : 0;
-  const end = ["coach notes:", "japanese explanation:", "better options:", "native note:"]
+  const end = ["coach notes:", "japanese explanation:", "better options:", "native note:", "\nsources:", "\nsource:"]
     .map((candidate) => lower.indexOf(candidate, from))
     .filter((index) => index > from)
     .sort((a, b) => a - b)[0] ?? text.length;
