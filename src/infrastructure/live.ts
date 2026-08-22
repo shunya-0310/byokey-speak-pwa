@@ -35,6 +35,28 @@ type LiveServerMessage = {
 
 const LIVE_INPUT_SAMPLE_RATE = 16000;
 
+/**
+ * Live API requires output and voice options inside `generationConfig`.
+ * Keeping this separate makes the WebSocket setup contract testable.
+ */
+export function createGeminiLiveSetup(input: Pick<LiveInput, "model" | "voice" | "systemInstruction">) {
+  return {
+    setup: {
+      model: `models/${input.model.replace(/^models\//, "")}`,
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: input.voice || "Kore" } }
+        },
+        thinkingConfig: { thinkingLevel: "minimal" }
+      },
+      systemInstruction: { parts: [{ text: input.systemInstruction }] },
+      inputAudioTranscription: {},
+      outputAudioTranscription: {}
+    }
+  };
+}
+
 export async function startGeminiLiveSession(input: LiveInput): Promise<GeminiLiveSession> {
   if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
     throw new Error("このブラウザはリアルタイム音声会話に対応していません。");
@@ -81,19 +103,7 @@ export async function startGeminiLiveSession(input: LiveInput): Promise<GeminiLi
   };
 
   websocket.onopen = () => {
-    websocket.send(JSON.stringify({
-      setup: {
-        model: `models/${input.model.replace(/^models\//, "")}`,
-        responseModalities: ["AUDIO"],
-        systemInstruction: { parts: [{ text: input.systemInstruction }] },
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: input.voice || "Kore" } }
-        },
-        thinkingConfig: { thinkingLevel: "low" }
-      }
-    }));
+    websocket.send(JSON.stringify(createGeminiLiveSetup(input)));
   };
 
   const startCapture = () => {
