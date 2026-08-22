@@ -218,7 +218,6 @@ export async function streamSpeechWithGemini(input: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Api-Revision": "2026-05-20",
         "x-goog-api-key": input.apiKey
       },
       body: JSON.stringify(body),

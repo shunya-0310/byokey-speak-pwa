@@ -61,6 +61,7 @@ describe("gemini", () => {
     expect(received).toEqual(["YQ==", "Yg=="]);
     const request = fetchMock.mock.calls[0]?.[1];
     expect(JSON.parse(request.body).stream).toBe(true);
-    expect(request.headers["Api-Revision"]).toBe("2026-05-20");
+    expect(request.headers["Api-Revision"]).toBeUndefined();
+    expect(request.headers["x-goog-api-key"]).toBe("test-key");
   });
 });
