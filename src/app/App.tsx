@@ -1950,12 +1950,11 @@ function SettingsTab(props: {
           <label>読み上げ方式<select value={props.settings.speechOutputProvider} onChange={(event) => {
             const speechOutputProvider = event.target.value as AppSettings["speechOutputProvider"];
             props.onSettings({ speechOutputProvider });
-            if (speechOutputProvider === "geminiTts") props.onGeminiVoicePreview(props.settings.geminiTtsVoice);
           }}><option value="device">端末の読み上げ（無料・端末依存）</option><option value="geminiTts">Gemini TTS（高品質・API利用）</option></select></label>
           {props.settings.speechOutputProvider === "device" ? <>
             <label>Voice（端末音声）<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
             <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
-          </> : <label>Voice（Gemini）<select value={props.settings.geminiTtsVoice} onChange={(event) => {
+          </> : <label>Voice(Gemini)※選択時に音声が再生されます<select value={props.settings.geminiTtsVoice} onChange={(event) => {
             props.onSettings({ geminiTtsVoice: event.target.value });
             props.onGeminiVoicePreview(event.target.value);
           }}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice} — {GEMINI_TTS_VOICE_STYLES[voice]}</option>)}</select></label>}
