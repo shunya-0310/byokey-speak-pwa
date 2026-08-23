@@ -1050,6 +1050,7 @@ export default function App() {
   return (
     <div className="app" onPointerDownCapture={handleGlobalInteractionSound}>
       {splashMode && <SplashOverlay onFinished={() => setSplashMode(null)} />}
+      {recordingMic && <MicRecordingOverlay language={recordingMic.language} onStop={() => { void stopActiveMicRecording(); }} />}
       <header className="app-hero" aria-label="BYOKey Speak">
         <h1>BYOKey Speak</h1>
         <div className="hero-rule"><span>✦</span></div>
@@ -2054,6 +2055,21 @@ function renderTextWithCompactLinks(text: string) {
   }
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
   return nodes;
+}
+
+function MicRecordingOverlay(props: { language: MicLanguage; onStop: () => void }) {
+  const isEnglish = props.language === "en-US";
+  const languageLabel = isEnglish ? "英語" : "日本語";
+  return <div className="mic-recording-layer" role="dialog" aria-modal="true" aria-label={`${languageLabel}の音声入力中`}>
+    <section className="mic-recording-dialog">
+      <p className="mic-recording-brand">BYOKey Speak</p>
+      <div className="mic-recording-orbit" aria-hidden="true"><Mic size={58} strokeWidth={1.8} /></div>
+      <h2>{languageLabel}を聞いています</h2>
+      <p>話し終わったら、下のボタンを押して確定してください。</p>
+      <button className="mic-recording-stop" onClick={props.onStop}><Mic size={20} /> 停止して確定</button>
+      <span className="mic-recording-language">{isEnglish ? "English (United States)" : "日本語"}</span>
+    </section>
+  </div>;
 }
 
 function AssistModal(props: {
