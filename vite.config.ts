@@ -45,7 +45,7 @@ export default defineConfig({
         skipWaiting: true,
         cleanupOutdatedCaches: true,
         navigateFallback: "/index.html",
-        globPatterns: ["**/*.{js,css,html,ico,png,webp,jpg,mp3,json,webmanifest}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,webp,jpg,mp3,wav,json,webmanifest}"],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.origin === "https://generativelanguage.googleapis.com",

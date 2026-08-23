@@ -249,6 +249,24 @@ export function speakCoachText(text: string, gender: VoiceGender, onEnd?: () => 
   return true;
 }
 
+/** Plays a bundled Gemini voice sample. This is static media and never invokes Gemini. */
+export async function playStaticSpeechPreview(url: string, onEnd?: () => void) {
+  stopSpeaking();
+  const audio = new Audio(url);
+  audio.preload = "auto";
+  currentGeneratedAudio = audio;
+  currentGeneratedAudioUrl = "";
+  audio.onended = () => {
+    cleanupGeneratedAudio();
+    onEnd?.();
+  };
+  audio.onerror = () => {
+    cleanupGeneratedAudio();
+    onEnd?.();
+  };
+  await audio.play();
+}
+
 export function playGeneratedSpeech(input: { base64Audio: string; mimeType: string; sampleRate?: number; channels?: number; onEnd?: () => void; rate?: number }) {
   stopSpeaking();
   const audioBytes = base64ToBytes(input.base64Audio);

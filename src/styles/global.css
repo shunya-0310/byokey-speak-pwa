@@ -924,45 +924,6 @@ a {
   color: var(--gold-dark);
 }
 
-.live-console {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.6rem;
-  border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--parchment-light) 82%, transparent);
-}
-
-.live-console .section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-}
-
-.live-console .section-title button {
-  min-height: 2.2rem;
-  padding: 0.35rem 0.9rem;
-}
-
-.live-transcript {
-  display: grid;
-  gap: 0.2rem;
-  max-height: 6.5rem;
-  overflow: auto;
-  padding: 0.45rem;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--parchment) 84%, transparent);
-}
-
-.live-transcript p {
-  margin: 0;
-}
-
-.live-transcript .coach {
-  color: var(--coral-deep);
-}
-
 .news-scroll,
 .topics {
   display: grid;

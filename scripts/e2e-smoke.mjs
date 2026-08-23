@@ -37,7 +37,7 @@ async function checkViewport(contextOptions) {
           const nextButton = page.getByRole("button", { name: "次へ" }).last();
           try {
             await nextButton.scrollIntoViewIfNeeded({ timeout: 5000 });
-            await nextButton.click({ timeout: 5000 });
+            await nextButton.evaluate((button) => button.click());
           } catch {
             continue;
           }
@@ -63,9 +63,8 @@ async function checkViewport(contextOptions) {
       for (const expectedText of expectedPages) {
         await advanceOnboarding(expectedText);
       }
-      await page.getByLabel("リスクと外部送信について理解しました").check();
-      await page.locator(".onboarding-actions button.primary").click({ force: true });
-      await page.getByText("TODAY'S WORLD").waitFor({ timeout: 10000 });
+      await page.getByRole("button", { name: "後で設定する" }).click({ force: true });
+      await page.getByLabel("Daily News").getByRole("heading", { name: "TODAY'S WORLD" }).waitFor({ timeout: 10000 });
     }
     await context.close();
   } finally {

@@ -1,6 +1,7 @@
 export type ThemeMode = "dark" | "light";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
-export type VoiceMode = "off" | "manual" | "fullAuto" | "live";
+/** When enabled, the coach reply is read aloud and then the English mic starts. */
+export type VoiceMode = "off" | "manual";
 export type VoiceGender = "female" | "male";
 export type SpeechOutputProvider = "device" | "geminiTts";
 export type MessageRole = "user" | "coach" | "system";
@@ -16,10 +17,6 @@ export const GEMINI_MODELS = [
 
 export const GEMINI_TTS_MODELS = [
   { id: "gemini-3.1-flash-tts-preview", label: "Gemini 3.1 Flash TTS（ストリーミング）", recommended: true }
-] as const;
-
-export const GEMINI_LIVE_MODELS = [
-  { id: "gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live Preview", recommended: true }
 ] as const;
 
 export const GEMINI_TTS_VOICES = [
@@ -55,6 +52,44 @@ export const GEMINI_TTS_VOICES = [
   "Sulafat"
 ] as const;
 
+export const GEMINI_TTS_VOICE_STYLES: Record<(typeof GEMINI_TTS_VOICES)[number], string> = {
+  Zephyr: "Bright",
+  Puck: "Upbeat",
+  Charon: "Informative",
+  Kore: "Firm",
+  Fenrir: "Excitable",
+  Aoede: "Breezy",
+  Leda: "Youthful",
+  Orus: "Firm",
+  Callirrhoe: "Easy-going",
+  Autonoe: "Bright",
+  Enceladus: "Breathy",
+  Iapetus: "Clear",
+  Umbriel: "Easy-going",
+  Algieba: "Smooth",
+  Despina: "Smooth",
+  Erinome: "Clear",
+  Algenib: "Gravelly",
+  Rasalgethi: "Informative",
+  Laomedeia: "Upbeat",
+  Achernar: "Soft",
+  Alnilam: "Firm",
+  Schedar: "Even",
+  Gacrux: "Mature",
+  Pulcherrima: "Forward",
+  Achird: "Friendly",
+  Zubenelgenubi: "Casual",
+  Vindemiatrix: "Gentle",
+  Sadachbia: "Lively",
+  Sadaltager: "Knowledgeable",
+  Sulafat: "Warm"
+};
+
+/** A bundled, one-time-generated sample. Playing it never uses a user's API key. */
+export function geminiTtsVoicePreviewPath(voice: string) {
+  return `/voice-previews/${voice.trim().toLowerCase()}.wav`;
+}
+
 export const DEFAULT_COACH_SKILLS = `# Coach Skills
 
 ## 目的
@@ -83,8 +118,6 @@ export interface AppSettings {
   speechOutputProvider: SpeechOutputProvider;
   geminiTtsModel: string;
   geminiTtsVoice: string;
-  liveModel: string;
-  liveVoice: string;
   soundEffectsEnabled: boolean;
   dailyNewsNotificationsEnabled: boolean;
   onboardingDone: boolean;
@@ -211,8 +244,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   speechOutputProvider: "device",
   geminiTtsModel: GEMINI_TTS_MODELS[0].id,
   geminiTtsVoice: "Kore",
-  liveModel: GEMINI_LIVE_MODELS[0].id,
-  liveVoice: "Kore",
   soundEffectsEnabled: true,
   dailyNewsNotificationsEnabled: false,
   onboardingDone: false,

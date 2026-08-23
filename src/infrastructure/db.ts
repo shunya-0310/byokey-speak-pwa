@@ -285,8 +285,6 @@ export async function exportSnapshot() {
       speechOutputProvider: settings.speechOutputProvider,
       geminiTtsModel: settings.geminiTtsModel,
       geminiTtsVoice: settings.geminiTtsVoice,
-      liveModel: settings.liveModel,
-      liveVoice: settings.liveVoice,
       soundEffectsEnabled: settings.soundEffectsEnabled,
       dailyNewsNotificationsEnabled: settings.dailyNewsNotificationsEnabled
     },

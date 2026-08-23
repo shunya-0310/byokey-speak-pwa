@@ -26,7 +26,13 @@ function getAudioContext() {
   if (typeof window === "undefined") return null;
   const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: BrowserAudioContext }).webkitAudioContext;
   if (!AudioContextClass) return null;
-  audioContext ??= new AudioContextClass({ latencyHint: "interactive" });
+  try {
+    audioContext ??= new AudioContextClass({ latencyHint: "interactive" });
+  } catch {
+    // Sound effects are optional. Browsers that reject AudioContext creation
+    // must still be able to navigate and use every app control.
+    return null;
+  }
   return audioContext;
 }
 

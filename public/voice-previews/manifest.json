@@ -1,0 +1,248 @@
+{
+  "generatedWith": "gemini-3.1-flash-tts-preview",
+  "sampleText": "Hello! I am your English coach. Let’s practice together.",
+  "format": "WAV / 16-bit PCM",
+  "note": "Bundled Gemini voice samples. Playback does not invoke the Gemini API.",
+  "voices": [
+    {
+      "voice": "Kore",
+      "file": "kore.wav",
+      "status": "generated",
+      "bytes": 205484,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Puck",
+      "file": "puck.wav",
+      "status": "generated",
+      "bytes": 205484,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Charon",
+      "file": "charon.wav",
+      "status": "generated",
+      "bytes": 211244,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Fenrir",
+      "file": "fenrir.wav",
+      "status": "generated",
+      "bytes": 234284,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Aoede",
+      "file": "aoede.wav",
+      "status": "generated",
+      "bytes": 220844,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Leda",
+      "file": "leda.wav",
+      "status": "generated",
+      "bytes": 251564,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Orus",
+      "file": "orus.wav",
+      "status": "generated",
+      "bytes": 230444,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Zephyr",
+      "file": "zephyr.wav",
+      "status": "generated",
+      "bytes": 220844,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Callirrhoe",
+      "file": "callirrhoe.wav",
+      "status": "generated",
+      "bytes": 224684,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Autonoe",
+      "file": "autonoe.wav",
+      "status": "generated",
+      "bytes": 253484,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Enceladus",
+      "file": "enceladus.wav",
+      "status": "generated",
+      "bytes": 220844,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Iapetus",
+      "file": "iapetus.wav",
+      "status": "generated",
+      "bytes": 226604,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Umbriel",
+      "file": "umbriel.wav",
+      "status": "generated",
+      "bytes": 238124,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Algieba",
+      "file": "algieba.wav",
+      "status": "generated",
+      "bytes": 218924,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Despina",
+      "file": "despina.wav",
+      "status": "generated",
+      "bytes": 218924,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Erinome",
+      "file": "erinome.wav",
+      "status": "generated",
+      "bytes": 228524,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Algenib",
+      "file": "algenib.wav",
+      "status": "generated",
+      "bytes": 215084,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Rasalgethi",
+      "file": "rasalgethi.wav",
+      "status": "generated",
+      "bytes": 209324,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Laomedeia",
+      "file": "laomedeia.wav",
+      "status": "generated",
+      "bytes": 215084,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Achernar",
+      "file": "achernar.wav",
+      "status": "generated",
+      "bytes": 220844,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Alnilam",
+      "file": "alnilam.wav",
+      "status": "generated",
+      "bytes": 226604,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Schedar",
+      "file": "schedar.wav",
+      "status": "generated",
+      "bytes": 217004,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Gacrux",
+      "file": "gacrux.wav",
+      "status": "generated",
+      "bytes": 232364,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Pulcherrima",
+      "file": "pulcherrima.wav",
+      "status": "generated",
+      "bytes": 220844,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Achird",
+      "file": "achird.wav",
+      "status": "generated",
+      "bytes": 217004,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Zubenelgenubi",
+      "file": "zubenelgenubi.wav",
+      "status": "generated",
+      "bytes": 215084,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Vindemiatrix",
+      "file": "vindemiatrix.wav",
+      "status": "generated",
+      "bytes": 230444,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Sadachbia",
+      "file": "sadachbia.wav",
+      "status": "generated",
+      "bytes": 230444,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Sadaltager",
+      "file": "sadaltager.wav",
+      "status": "generated",
+      "bytes": 222764,
+      "sampleRate": 24000,
+      "channels": 1
+    },
+    {
+      "voice": "Sulafat",
+      "file": "sulafat.wav",
+      "status": "generated",
+      "bytes": 228524,
+      "sampleRate": 24000,
+      "channels": 1
+    }
+  ]
+}
