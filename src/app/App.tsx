@@ -1960,15 +1960,6 @@ function SettingsTab(props: {
             props.onGeminiVoicePreview(event.target.value);
           }}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice} — {GEMINI_TTS_VOICE_STYLES[voice]}</option>)}</select></label>}
         </article>
-        {props.settings.speechOutputProvider === "geminiTts" && <article className="card stack">
-          <h3>Gemini音声（Preview）</h3>
-          <p className="small muted">Gemini TTSはPreview機能です。読み上げテキストが、利用者自身のGemini APIキーでGoogleのAPIへ送信され、API利用料が発生する場合があります。BYOKey Labのサーバーは経由しません。</p>
-          <div className="stack">
-            <p className="small muted">TTS model: {GEMINI_TTS_MODELS[0].label}</p>
-            <div className="row"><button onClick={() => props.onGeminiVoicePreview(props.settings.geminiTtsVoice)}>Gemini音声で例文を試聴</button></div>
-            <p className="small muted">選択したGemini音声の静的な例文を再生します。この試聴ではAPIを使用しません。会話本文の読み上げ時だけ、利用者自身のAPIキーでGemini TTSを呼び出します。</p>
-          </div>
-        </article>}
         <article data-tutorial-id={TUTORIAL_TARGETS.settingsCefr} className="card stack cefr-guide">
           <h3>CEFRレベルの目安</h3>
           <div className="cefr-chip-row" role="listbox" aria-label="CEFR level">
