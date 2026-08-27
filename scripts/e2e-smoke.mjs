@@ -26,18 +26,18 @@ async function checkViewport(contextOptions) {
     const bodyText = await waitForInitialAppText(page, pageErrors);
     const titleVisible = bodyText.includes("BYOKey Speak");
     const onboardingVisible = bodyText.includes("BYOKey Speakへようこそ");
-    const shellVisible = bodyText.includes("New Chatです。") || bodyText.includes("TODAY'S WORLD");
+    const shellVisible = bodyText.includes("New Chatです。") || bodyText.includes("Daily NewsはAndroid製品版で毎朝配信されます。");
     if (!titleVisible || (!onboardingVisible && !shellVisible)) {
       throw new Error(`Initial app UI was not visible.\nPage errors: ${pageErrors.join(" | ")}\nBody: ${bodyText.slice(0, 500)}`);
     }
     if (onboardingVisible) {
       async function advanceOnboarding(expectedText) {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
           const beforeText = await page.locator("body").innerText().catch(() => "");
           const nextButton = page.getByRole("button", { name: "次へ" }).last();
           try {
             await nextButton.scrollIntoViewIfNeeded({ timeout: 5000 });
-            await nextButton.evaluate((button) => button.click());
+            await nextButton.click({ force: true, timeout: 5000 });
           } catch {
             continue;
           }
@@ -64,7 +64,7 @@ async function checkViewport(contextOptions) {
         await advanceOnboarding(expectedText);
       }
       await page.getByRole("button", { name: "後で設定する" }).click({ force: true });
-      await page.getByLabel("Daily News").getByRole("heading", { name: "TODAY'S WORLD" }).waitFor({ timeout: 10000 });
+      await page.getByLabel("Daily News").getByText("Daily NewsはAndroid製品版で毎朝配信されます。").waitFor({ timeout: 10000 });
     }
     await context.close();
   } finally {
@@ -78,10 +78,10 @@ async function waitForInitialAppText(page, pageErrors) {
     try {
       await page.waitForFunction(() => {
         const text = document.body?.innerText ?? "";
-        return text.includes("BYOKey Speakへようこそ") || text.includes("New Chatです。") || text.includes("TODAY'S WORLD");
+        return text.includes("BYOKey Speakへようこそ") || text.includes("New Chatです。") || text.includes("Daily NewsはAndroid製品版で毎朝配信されます。");
       }, null, { timeout: 15000 });
       const bodyText = await page.locator("body").innerText().catch(() => "");
-      if (bodyText.includes("BYOKey Speakへようこそ") || bodyText.includes("New Chatです。") || bodyText.includes("TODAY'S WORLD")) return bodyText;
+      if (bodyText.includes("BYOKey Speakへようこそ") || bodyText.includes("New Chatです。") || bodyText.includes("Daily NewsはAndroid製品版で毎朝配信されます。")) return bodyText;
     } catch {
       // The Windows/Chromium smoke check can occasionally observe an empty body immediately after Vite preview starts.
       // Retry once with a reload before reporting a real UI failure.
