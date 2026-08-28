@@ -24,7 +24,7 @@ export default defineConfig({
       manifest: {
         name: "BYOKey Speak",
         short_name: "BYOKey Speak",
-        description: "Gemini APIキーで使う登録不要の英会話PWA体験版。A1〜A2の会話、コーチ設定、単語帳、学習進捗をブラウザ内で管理できます。",
+        description: "Gemini APIキーを自分のブラウザから使う、登録不要の英会話PWA。会話レベル、コーチ設定、Daily News、単語帳、学習進捗をブラウザ内で管理できます。",
         theme_color: "#101b2c",
         background_color: "#FEFEFE",
         lang: "ja",

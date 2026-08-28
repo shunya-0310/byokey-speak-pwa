@@ -1,21 +1,10 @@
-# BYOKey Speak PWA（体験版）
+# BYOKey Speak PWA
 
 BYOKey Speak PWAは、Gemini専用の登録不要BYOK型英会話PWAです。
 ユーザー自身のGemini APIキーを、ユーザーのブラウザからGoogle Gemini APIへ直接送信します。
 
 BYOKey Labは、APIキーを受信、保存、閲覧するためのアプリケーションサーバーやデータベースを持ちません。
-APIキー、会話、Vocabulary、進捗、過去の分析結果はブラウザ内に保存されます。
-
-## 体験版の範囲
-
-PWA版は無料の体験版です。Geminiテキスト会話、Quick Assist、端末の音声入力・読み上げ、Vocabulary List、学習記録、コーチ設定、バックアップを利用できます。
-
-- Daily Newsの配信・通知は利用できません。
-- 新しい会話分析は利用できません。保存済みの分析結果は削除しません。
-- CEFRはA1・A2のみ選べます。保存済みのB1〜C2設定はA2へ安全に切り替えます。
-- Gemini TTSは利用できません。保存済みの設定は端末の読み上げへ切り替えます。
-
-Daily News、会話分析、CEFR B1〜C2、Gemini TTSはAndroid製品版で利用できます: https://play.google.com/store/apps/details?id=com.byokeylab.speak
+APIキー、会話、Vocabulary、進捗、分析結果はブラウザ内に保存されます。
 
 ## 重要な注意
 
@@ -28,13 +17,18 @@ Daily News、会話分析、CEFR B1〜C2、Gemini TTSはAndroid製品版で利�
 ## 外部通信
 
 - `https://generativelanguage.googleapis.com`: Gemini API呼び出し。
+- `https://byokey-lab.com/news/daily.json`: Daily News公開JSONの取得。
+- `https://raw.githubusercontent.com/shunya-0310/byokey-lab-site/main/public/news/daily.json`: Daily Newsの代替取得。
 
 独自API、Supabase、Cloudflare Functions、解析SDK、広告SDKは使いません。
 
 ## 音声モード
 
 - **端末の読み上げ**: ブラウザ・OS標準音声を利用する無料モード。品質は端末により異なる。
+- **Gemini TTS**: `gemini-3.1-flash-tts-preview` から受信した音声チャンクを順次再生する。読み上げる本文は利用者のブラウザからGoogleへ直接送信され、同じ返信の再生には端末内キャッシュを使う。
 - **読み上げ&マイクオート**: 返信を読み上げた後、英語マイクを自動で起動する補助モード。話し終えたら英マイクを押して送信する。
+
+`public/voice-previews/` には、BYOKey Labが一回だけGemini TTSで生成した各音声の短い例文を同梱します。設定画面での声の試聴は静的ファイルの再生であり、利用者のAPIキーやGemini APIを使用しません。
 
 ## 開発
 

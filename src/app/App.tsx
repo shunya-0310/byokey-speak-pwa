@@ -31,6 +31,10 @@ import { StudyCalendarBottomSheet, VocabularyHistoryBottomSheet } from "./Progre
 import { SplashOverlay } from "./SplashOverlay";
 import {
   GEMINI_MODELS,
+  GEMINI_TTS_MODELS,
+  GEMINI_TTS_VOICES,
+  GEMINI_TTS_VOICE_STYLES,
+  geminiTtsVoicePreviewPath,
   type AppSettings,
   type Chat,
   type ChatMessage,
@@ -61,11 +65,12 @@ import {
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
 import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { loadDailyNews, newsHiddenContext, newsVisibleOpener } from "../infrastructure/news";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
-import { canRecordAudio, canRecognizeSpeech, shouldUseGeminiMicFallback, speakCoachText, startGeneratedSpeechStream, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type GeneratedSpeechStream, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
+import { canRecordAudio, canRecognizeSpeech, playStaticSpeechPreview, shouldUseGeminiMicFallback, speakCoachText, startGeneratedSpeechStream, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type GeneratedSpeechStream, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
-import { TRIAL_EDITION, canUseTrialGeminiTts, normalizeTrialEnglishLevel, normalizeTrialSpeechOutputProvider } from "../domain/trial";
+import type { DailyNewsFeed, DailyNewsItem } from "../domain/schemas";
 
 type Tab = "chats" | "review" | "progress" | "settings";
 type ChatPage = "list" | "conversation";
@@ -109,7 +114,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     kind: "chats",
     title: "TODAY'S WORLD",
-    message: "Daily NewsはAndroid製品版で毎朝配信されます。PWA体験版では、New Chatから自由な話題で会話を始められます。",
+    message: "毎朝世界のトップニュースが配信されます。気になる記事の Talk から、その話題でChatを立ち上げられます。",
     targetId: TUTORIAL_TARGETS.chatsDailyNews,
     tab: "chats",
     chatPage: "list"
@@ -117,7 +122,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     kind: "chats",
     title: "+ New Chat",
-    message: "話したい話題があるときは、新しい会話をここから始めます。",
+    message: "ニュース以外の話題で話したいときは、新しい会話をここから始めます。",
     targetId: TUTORIAL_TARGETS.chatsNewChat,
     tab: "chats",
     chatPage: "list"
@@ -125,7 +130,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     kind: "chatControls",
     title: "ヘッドフォン",
-    message: "タップするたびに通常と「読み上げ&マイクオート」を切り替えます。後者では、返信を読み上げた後に英語マイクが起動します。",
+    message: "タップするたびに通常、マニュアル送信、フルオートへ切り替わります。マニュアル送信では読み上げ後にマイクが起動し、フルオートでは音声入力後の送信まで自動で行います。",
     targetId: TUTORIAL_TARGETS.chatAutoMode,
     tab: "chats",
     chatPage: "conversation"
@@ -178,7 +183,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     kind: "progress",
     title: "Conversation Analysis",
-    message: "会話分析はAndroid製品版で利用できます。PWA体験版では、Progress画面から学習記録を確認できます。",
+    message: "会話の履歴が溜まったら、Progress画面から自分の話し方の特徴や多い失敗を分析できます。",
     targetId: TUTORIAL_TARGETS.progressAnalysis,
     tab: "progress"
   },
@@ -253,7 +258,7 @@ const ONBOARDING = [
       "BYOKey SpeakはGoogleのAIモデル「Gemini」を使って英会話を楽しむブラウザアプリです。",
       "一般的なAI英会話では実現しにくい、あなた専属のコーチ像を「あなたの言葉で」「自由に」設定して会話を楽しむことができます。",
       "誰か偉人を呼び出して会話をするのも面白いかもしれませんね！",
-      "PWA体験版では、会話レベルをCEFR A1〜A2から選べます。"
+      "会話のレベルはCEFR A1〜C2まで対応しており、これも自由に設定可能です。"
     ],
     image: "/images/onboarding/onboarding_bg_1.jpg"
   },
@@ -294,7 +299,6 @@ const ONBOARDING = [
     body: [
       "設定画面からGeminiモデルの選択、APIキーの設定、会話レベル／コーチの性格などの設定を行いましょう。",
       "BYOKによる一段上の体験を実感してください。",
-      "Daily News、会話分析、Gemini音声、CEFR B1〜C2はAndroid製品版で利用できます。",
       "ご利用にあたっては、前段のリスクとAI利用による会話内容の外部送信についての同意をお願いいたします。"
     ],
     image: "/images/onboarding/onboarding_bg_5.jpg"
@@ -314,6 +318,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [news, setNews] = useState<{ feed?: DailyNewsFeed; notice?: string }>({});
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [assist, setAssist] = useState<{ open: boolean; stuck: string; suggestions: Array<{ english: string; note: string }> }>({ open: false, stuck: "", suggestions: [] });
   const [backupPassphrase, setBackupPassphrase] = useState("");
@@ -360,10 +365,8 @@ export default function App() {
     if (persistedWithLegacyVoice.voiceMode !== "off" && persistedWithLegacyVoice.voiceMode !== "manual") {
       settings = { ...settings, voiceMode: "off" };
     }
-    const trialLevel = normalizeTrialEnglishLevel(settings.englishLevel);
-    const trialSpeechOutput = normalizeTrialSpeechOutputProvider();
-    if (settings.englishLevel !== trialLevel || settings.speechOutputProvider !== trialSpeechOutput || settings.dailyNewsNotificationsEnabled) {
-      settings = { ...settings, englishLevel: trialLevel, speechOutputProvider: trialSpeechOutput, dailyNewsNotificationsEnabled: false };
+    if (settings.geminiTtsModel !== GEMINI_TTS_MODELS[0].id) {
+      settings = { ...settings, geminiTtsModel: GEMINI_TTS_MODELS[0].id };
     }
     if (settings !== storedSettings) await saveSettings(settings);
     setData({ settings, chats, messages, vocab: mergeEquivalentVocabCards(vocab), notes, stats, analyses });
@@ -383,6 +386,20 @@ export default function App() {
         ? settings.lastOpenedChatId
         : chats[0]?.id ?? await ensureFirstChat();
       setActiveChatId(selected);
+    }
+  }
+
+  async function refreshNews(manual = false) {
+    if (manual) setBusy("Daily Newsを更新中です");
+    try {
+      const { feed, notice } = await loadDailyNews();
+      setNews({ feed, notice });
+      if (manual) setNotice("Daily Newsを更新しました。");
+    } catch {
+      setNews({ notice: "Daily Newsを読み込めませんでした。" });
+      if (manual) setError("Daily Newsを読み込めませんでした。");
+    } finally {
+      if (manual) setBusy("");
     }
   }
 
@@ -437,6 +454,7 @@ export default function App() {
 
   useEffect(() => {
     void reload();
+    void refreshNews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -755,7 +773,7 @@ export default function App() {
   }
 
   async function speakMessage(message: ChatMessage, afterEnd?: () => void) {
-    if (canUseTrialGeminiTts() && currentData.settings.speechOutputProvider === "geminiTts") {
+    if (currentData.settings.speechOutputProvider === "geminiTts") {
       if (currentData.settings.consentVersion < 1) {
         setActiveTab("settings");
         setError("Gemini TTSには、リスクと外部送信についての同意が必要です。");
@@ -1063,11 +1081,13 @@ export default function App() {
         {busy && <p className="toast small row"><Loader2 size={16} /> {busy}</p>}
       </div>}
       <main className={`main main-${activeTab}`}>
+        {news.notice && <p className="panel small">{news.notice}</p>}
         {activeTab === "chats" && <ChatsTab
           chats={data.chats}
           activeChat={activeChat}
           messages={chatMessages}
           allMessages={data.messages}
+          news={news.feed}
           draft={draft}
           setDraftFromUser={updateDraftFromUser}
           settings={data.settings}
@@ -1078,6 +1098,7 @@ export default function App() {
           speakingMessageId={speakingMessageId}
           onBackToChats={() => setChatPage("list")}
           onNewChat={() => newChat()}
+          onNews={(item) => newChat(item.headline, "DAILY_NEWS", newsHiddenContext(item), newsVisibleOpener(item, data.settings.coachSkills), item.sources)}
           onSelectChat={selectChat}
           onPin={async (chat) => {
             await db.chats.update(chat.id, { pinned: !chat.pinned });
@@ -1105,11 +1126,7 @@ export default function App() {
           }}
         />}
         {activeTab === "review" && <ReviewTab vocab={data.vocab} messages={data.messages} onReload={reload} />}
-        {activeTab === "progress" && <ProgressTab progress={progress} stats={data.stats} vocab={data.vocab} analyses={data.analyses} canAnalyze={TRIAL_EDITION.analysisEnabled} onAnalyze={async () => {
-          if (!TRIAL_EDITION.analysisEnabled) {
-            setNotice("会話分析はAndroid製品版で利用できます。");
-            return;
-          }
+        {activeTab === "progress" && <ProgressTab progress={progress} stats={data.stats} vocab={data.vocab} analyses={data.analyses} canAnalyze={canSendToGemini} onAnalyze={async () => {
           const userMessages = data.messages.filter((message) => message.role === "user");
           if (userMessages.length < 20) {
             setError(`会話分析にはあと${20 - userMessages.length}発話必要です。`);
@@ -1140,6 +1157,27 @@ export default function App() {
           setBackupPassphrase={setBackupPassphrase}
           status={settingsStatus}
           onSettings={updateSettings}
+          onGeminiVoicePreview={(voice) => {
+            void playStaticSpeechPreview(geminiTtsVoicePreviewPath(voice))
+              .catch(() => setError("Gemini音声の例文を再生できませんでした。ネットワーク接続を確認してください。"));
+          }}
+          onDailyNewsNotificationToggle={async (enabled) => {
+            if (enabled && "Notification" in window && Notification.permission === "default") {
+              const permission = await Notification.requestPermission();
+              if (permission !== "granted") {
+                await updateSettings({ dailyNewsNotificationsEnabled: false });
+                showSettingsStatus({ section: "system", kind: "error", text: "通知が許可されませんでした。ブラウザ設定から許可できます。" });
+                return;
+              }
+            }
+            if (enabled && "Notification" in window && Notification.permission === "denied") {
+              await updateSettings({ dailyNewsNotificationsEnabled: false });
+              showSettingsStatus({ section: "system", kind: "error", text: "通知がブロックされています。ブラウザ設定から許可してください。" });
+              return;
+            }
+            await updateSettings({ dailyNewsNotificationsEnabled: enabled });
+            showSettingsStatus({ section: "system", kind: "ok", text: enabled ? "Daily News通知をONにしました。PWAではブラウザの通知許可と起動状態により動作が制限されます。" : "Daily News通知をOFFにしました。" });
+          }}
           onSaveApiKey={async () => {
             if (!apiKeyDraft.trim()) return showSettingsStatus({ section: "api", kind: "error", text: "APIキーを入力してください。" });
             const mode = data.settings.apiKeyMode;
@@ -1357,6 +1395,7 @@ function ChatsTab(props: {
   activeChat?: Chat;
   messages: ChatMessage[];
   allMessages: ChatMessage[];
+  news?: DailyNewsFeed;
   draft: string;
   setDraftFromUser: (value: string) => void;
   settings: AppSettings;
@@ -1367,6 +1406,7 @@ function ChatsTab(props: {
   speakingMessageId: string | null;
   onBackToChats: () => void;
   onNewChat: () => void;
+  onNews: (item: DailyNewsItem) => void;
   onSelectChat: (chatId: string) => void;
   onPin: (chat: Chat) => void;
   onDelete: (chat: Chat) => void;
@@ -1382,6 +1422,36 @@ function ChatsTab(props: {
   micAvailable: boolean;
   onMic: (language: MicLanguage) => void;
 }) {
+  const newsItems = props.news?.items ?? [];
+  const newsCategories = Array.from(new Map(newsItems.map((item) => [item.category, newsCategoryLabel(item)])).entries());
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(newsCategories[0]?.[0] ?? null);
+  const [newsPage, setNewsPage] = useState(0);
+  const newsCarouselRef = useRef<HTMLDivElement | null>(null);
+  const activeCategory = selectedCategory && newsCategories.some(([category]) => category === selectedCategory)
+    ? selectedCategory
+    : newsItems[newsPage]?.category ?? newsCategories[0]?.[0] ?? null;
+  const visibleNews = newsItems;
+
+  function scrollNewsToPage(index: number, behavior: ScrollBehavior = "smooth") {
+    const carousel = newsCarouselRef.current;
+    const card = carousel?.querySelector<HTMLElement>(".daily-news-card");
+    if (!carousel || !card) return;
+    const gap = parseFloat(getComputedStyle(carousel).columnGap || "0");
+    carousel.scrollTo({ left: index * (card.offsetWidth + gap), behavior });
+  }
+
+  function updateNewsPageFromScroll() {
+    const carousel = newsCarouselRef.current;
+    if (!carousel) return;
+    const card = carousel.querySelector<HTMLElement>(".daily-news-card");
+    if (!card) return;
+    const gap = parseFloat(getComputedStyle(carousel).columnGap || "0");
+    const pageWidth = card.offsetWidth + gap;
+    const nextPage = Math.max(0, Math.min(newsItems.length - 1, Math.round(carousel.scrollLeft / Math.max(1, pageWidth))));
+    setNewsPage(nextPage);
+    if (newsItems[nextPage]) setSelectedCategory(newsItems[nextPage].category);
+  }
+
   if (props.page === "conversation") {
     return <section className="panel stack chat-page">
       <div className="conversation-title">
@@ -1432,10 +1502,38 @@ function ChatsTab(props: {
         <h2>✦ Chats</h2>
         <button data-tutorial-id={TUTORIAL_TARGETS.chatsNewChat} className="new-chat-pill" onClick={props.onNewChat}><Plus size={26} /> New Chat</button>
       </div>
-      <section data-tutorial-id={TUTORIAL_TARGETS.chatsDailyNews} className="panel trial-upgrade-card" aria-label="Daily News">
-        <strong>TODAY&apos;S WORLD</strong>
-        <p>Daily NewsはAndroid製品版で毎朝配信されます。</p>
-        <a href={TRIAL_EDITION.playStoreUrl} target="_blank" rel="noreferrer">Google Playで製品版を見る <ExternalLink size={14} /></a>
+      <section data-tutorial-id={TUTORIAL_TARGETS.chatsDailyNews} className="daily-news-section stack" aria-label="Daily News">
+        <div className="daily-news-title-row">
+          <div>
+            <h3>TODAY&apos;S WORLD</h3>
+            <p>{props.news?.date ?? new Date().toISOString().slice(0, 10)}</p>
+          </div>
+        </div>
+        {newsCategories.length > 0 && <div className="news-category-row" role="tablist" aria-label="News categories">
+          {newsCategories.map(([category, label]) => <button
+            key={category}
+            className={category === activeCategory ? "primary" : "ghost"}
+            onClick={() => {
+              const nextPage = Math.max(0, newsItems.findIndex((item) => item.category === category));
+              setSelectedCategory(category);
+              setNewsPage(nextPage);
+              window.requestAnimationFrame(() => scrollNewsToPage(nextPage));
+            }}
+          >{label}</button>)}
+        </div>
+        }
+        <p className="news-delivery-note">ニュースは毎朝6時半頃に配信されます。</p>
+        <div className="news-scroll android-news-scroll" ref={newsCarouselRef} onScroll={updateNewsPageFromScroll}>
+          {visibleNews.map((item) => <DailyNewsCard item={item} key={item.id} onTalk={() => props.onNews(item)} />)}
+          {!newsItems.length && <p className="muted">読み込み中です。</p>}
+        </div>
+        {visibleNews.length > 1 && <div className="pager-dots" aria-hidden="true">
+          {visibleNews.map((item, index) => <button className={index === newsPage ? "active" : ""} key={item.id} onClick={() => {
+            setNewsPage(index);
+            setSelectedCategory(item.category);
+            scrollNewsToPage(index);
+          }} aria-label={`News ${index + 1}`} />)}
+        </div>}
       </section>
       <div className="chat-history stack">
         {props.chats.map((chat) => {
@@ -1455,6 +1553,44 @@ function ChatsTab(props: {
         })}
       </div>
   </div>;
+}
+
+function DailyNewsCard(props: { item: DailyNewsItem; onTalk: () => void }) {
+  const source = props.item.sources[0];
+  return <article className="daily-news-card">
+    <div className="daily-news-card-main">
+      <div className="source-icon" aria-hidden="true">{sourceIconText(source?.url ?? props.item.headline)}</div>
+      <div>
+        <p className="news-card-category">{newsCategoryLabel(props.item)}</p>
+        <h4>{props.item.headline}</h4>
+      </div>
+    </div>
+    <p className="news-summary">{props.item.summary}</p>
+    <div className="daily-news-actions">
+      {source && <a className="buttonlike source-button" href={source.url} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Source</a>}
+      <button className="primary talk-button" onClick={props.onTalk}><MessageCircle size={18} /> Talk</button>
+    </div>
+  </article>;
+}
+
+function newsCategoryLabel(item: DailyNewsItem) {
+  if (item.categoryLabel) return item.categoryLabel;
+  const labels: Record<string, string> = {
+    politics_economy: "Politics & Economy",
+    technology: "Technology",
+    sports: "Sports",
+    entertainment: "Entertainment"
+  };
+  return labels[item.category] ?? item.category;
+}
+
+function sourceIconText(raw: string) {
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, "");
+    return host[0]?.toUpperCase() ?? "N";
+  } catch {
+    return raw.trim()[0]?.toUpperCase() ?? "N";
+  }
 }
 
 function latestChatMessage(chatId: string, messages: ChatMessage[]) {
@@ -1679,8 +1815,7 @@ function ProgressTab(props: { progress: ReturnType<typeof localProgress>; stats:
     </section>
     <section className="panel stack english-profile">
       <div className="section-title english-profile-title"><h2>✦ Your English Profile</h2><button data-tutorial-id={TUTORIAL_TARGETS.progressAnalysis} className="primary" disabled={!props.canAnalyze} onClick={props.onAnalyze}><Sparkles size={16} /> 会話を分析</button></div>
-      <div className="trial-upgrade-card"><strong>会話分析はAndroid製品版の機能です。</strong><p>このPWA体験版では、学習記録の確認まで利用できます。</p><a href={TRIAL_EDITION.playStoreUrl} target="_blank" rel="noreferrer">Google Playで製品版を見る <ExternalLink size={14} /></a></div>
-      {!latest && <p className="muted">分析結果はAndroid製品版で作成できます。</p>}
+      {!latest && <p className="muted">20発話以上で分析できます。分析結果はこのブラウザ内へ保存されます。</p>}
       {latest && <>
         <div className="analysis-card">
           <div className="section-title"><strong>{new Date(latest.createdAt).toLocaleString()}</strong><strong>CEFR {latest.result.estimatedCefr}</strong></div>
@@ -1728,6 +1863,8 @@ function SettingsTab(props: {
   setBackupPassphrase: (value: string) => void;
   status: SettingsStatus;
   onSettings: (patch: Partial<AppSettings>) => void;
+  onGeminiVoicePreview: (voice: string) => void;
+  onDailyNewsNotificationToggle: (enabled: boolean) => void;
   onSaveApiKey: () => void;
   onClearApiKey: () => void;
   onTestConnection: () => void;
@@ -1793,10 +1930,9 @@ function SettingsTab(props: {
           </div>
           <InlineStatus status={props.status} section="api" />
         </article>
-        <article className="card trial-upgrade-card stack">
-          <h3>Android製品版で使える機能</h3>
-          <p className="small muted">Daily Newsの配信・通知、会話分析、Gemini TTS、CEFR B1〜C2はAndroid製品版で利用できます。</p>
-          <a href={TRIAL_EDITION.playStoreUrl} target="_blank" rel="noreferrer">Google Playで製品版を見る <ExternalLink size={14} /></a>
+        <article className="card stack">
+          <div className="section-title"><h3>Daily News通知</h3><label className="switch"><input type="checkbox" checked={props.settings.dailyNewsNotificationsEnabled} onChange={(event) => props.onDailyNewsNotificationToggle(event.target.checked)} /><span /></label></div>
+          <p className="small muted">オンにすると、毎朝6:30頃にDaily Newsの配信をお知らせします。PWAでは端末・ブラウザの通知許可と起動状態により、通知が制限される場合があります。</p>
           <InlineStatus status={props.status} section="system" />
         </article>
         <article className="card stack">
@@ -1812,16 +1948,22 @@ function SettingsTab(props: {
       {section === "coach" && <div className="stack">
         <article className="grid settings-grid">
           <label>音声会話モード<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">読み上げ&amp;マイクオート</option></select></label>
-          <label>読み上げ方式<select value="device" disabled><option value="device">端末の読み上げ（無料・端末依存）</option></select></label>
-          <>
+          <label>読み上げ方式<select value={props.settings.speechOutputProvider} onChange={(event) => {
+            const speechOutputProvider = event.target.value as AppSettings["speechOutputProvider"];
+            props.onSettings({ speechOutputProvider });
+          }}><option value="device">端末の読み上げ（無料・端末依存）</option><option value="geminiTts">Gemini TTS（高品質・API利用）</option></select></label>
+          {props.settings.speechOutputProvider === "device" ? <>
             <label>Voice（端末音声）<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
             <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
-          </>
+          </> : <label>Voice(Gemini)※選択時に音声が再生されます<select value={props.settings.geminiTtsVoice} onChange={(event) => {
+            props.onSettings({ geminiTtsVoice: event.target.value });
+            props.onGeminiVoicePreview(event.target.value);
+          }}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice} — {GEMINI_TTS_VOICE_STYLES[voice]}</option>)}</select></label>}
         </article>
         <article data-tutorial-id={TUTORIAL_TARGETS.settingsCefr} className="card stack cefr-guide">
           <h3>CEFRレベルの目安</h3>
           <div className="cefr-chip-row" role="listbox" aria-label="CEFR level">
-            {CEFR_GUIDE.filter((item) => item.level === "A1" || item.level === "A2").map((item) => <button
+            {CEFR_GUIDE.map((item) => <button
               key={item.level}
               className={props.settings.englishLevel === item.level ? "primary" : "ghost"}
               onClick={() => props.onSettings({ englishLevel: item.level })}
@@ -1831,7 +1973,6 @@ function SettingsTab(props: {
             <strong>{selectedCefrGuide.level}</strong>
             <div><p>{selectedCefrGuide.overview}</p><p className="small muted">出力の目安：{selectedCefrGuide.output}</p></div>
           </div>
-          <p className="small muted">CEFR B1〜C2はAndroid製品版で利用できます。</p>
         </article>
         <label data-tutorial-id={TUTORIAL_TARGETS.settingsCoachSkill}>Coach Skills<textarea rows={10} value={coachSkillsDraft} onChange={(event) => setCoachSkillsDraft(event.target.value)} onBlur={commitCoachSkillsDraft} /></label>
         <InlineStatus status={props.status} section="coach" />
@@ -1855,7 +1996,6 @@ function SettingsTab(props: {
         <button onClick={props.onReplayOnboarding}>初回案内を再表示</button>
         <button onClick={props.onReplayTutorials}>チュートリアルを再表示</button>
         <div data-tutorial-id={TUTORIAL_TARGETS.settingsHelp}><InfoLink href={LINKS.apiGuide} label="API設定ガイド" /></div>
-        <InfoLink href={TRIAL_EDITION.playStoreUrl} label="Android製品版を見る" />
         <InfoLink href={LINKS.support} label="Support" />
       </div>}
       {section === "about" && <div className="stack">
