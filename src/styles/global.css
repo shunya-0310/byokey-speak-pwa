@@ -1206,6 +1206,23 @@ a {
   padding: 1rem;
 }
 
+.trial-upgrade-card {
+  border: 1px solid var(--gold);
+  background: color-mix(in srgb, var(--parchment-light) 84%, var(--gold));
+}
+
+.trial-upgrade-card strong,
+.trial-upgrade-card a {
+  color: var(--gold-dark);
+}
+
+.trial-upgrade-card a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+}
+
 .mic-recording-layer {
   position: fixed;
   inset: 0;
