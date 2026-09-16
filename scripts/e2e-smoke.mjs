@@ -66,9 +66,28 @@ async function checkViewport(contextOptions) {
       await page.getByRole("button", { name: "後で設定する" }).click({ force: true });
       await page.getByLabel("Daily News").getByText("Daily NewsはAndroid製品版で毎朝配信されます。").waitFor({ timeout: 10000 });
     }
+    await dismissTutorialIfVisible(page);
+    await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Settings" }).click();
+    await dismissTutorialIfVisible(page);
+    await page.getByRole("tablist", { name: "Settings sections" }).getByRole("button", { name: "レベル、コーチ設定" }).click();
+    const speechOutput = page.getByLabel("読み上げ方式");
+    await speechOutput.selectOption("geminiTts");
+    await page.getByLabel("Voice(Gemini)※選択時に音声が再生されます").waitFor({ timeout: 10000 });
+    const previewStatus = await page.evaluate(async () => (await fetch("/voice-previews/kore.wav")).status);
+    if (previewStatus !== 200) throw new Error(`Gemini voice preview was not served: ${previewStatus}`);
     await context.close();
   } finally {
     await browser.close();
+  }
+}
+
+async function dismissTutorialIfVisible(page) {
+  await page.locator(".splash-overlay").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  const tutorial = page.getByRole("dialog", { name: "チュートリアル" });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!await tutorial.isVisible().catch(() => false)) return;
+    await tutorial.getByRole("button", { name: "閉じる" }).click({ force: true });
+    await tutorial.waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
   }
 }
 

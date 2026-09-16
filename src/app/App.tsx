@@ -31,6 +31,9 @@ import { StudyCalendarBottomSheet, VocabularyHistoryBottomSheet } from "./Progre
 import { SplashOverlay } from "./SplashOverlay";
 import {
   GEMINI_MODELS,
+  GEMINI_TTS_VOICES,
+  GEMINI_TTS_VOICE_STYLES,
+  geminiTtsVoicePreviewPath,
   type AppSettings,
   type Chat,
   type ChatMessage,
@@ -63,7 +66,7 @@ import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBa
 import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
-import { canRecordAudio, canRecognizeSpeech, shouldUseGeminiMicFallback, speakCoachText, startGeneratedSpeechStream, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type GeneratedSpeechStream, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
+import { canRecordAudio, canRecognizeSpeech, playStaticSpeechPreview, shouldUseGeminiMicFallback, speakCoachText, startGeneratedSpeechStream, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type GeneratedSpeechStream, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
 import { playAppSound, primeAppSounds, type AppSound } from "../infrastructure/sound";
 import { TRIAL_EDITION, canUseTrialGeminiTts, normalizeTrialEnglishLevel, normalizeTrialSpeechOutputProvider } from "../domain/trial";
 
@@ -294,7 +297,7 @@ const ONBOARDING = [
     body: [
       "設定画面からGeminiモデルの選択、APIキーの設定、会話レベル／コーチの性格などの設定を行いましょう。",
       "BYOKによる一段上の体験を実感してください。",
-      "Daily News、会話分析、Gemini音声、CEFR B1〜C2はAndroid製品版で利用できます。",
+      "Daily News、会話分析、CEFR B1〜C2はAndroid製品版で利用できます。",
       "ご利用にあたっては、前段のリスクとAI利用による会話内容の外部送信についての同意をお願いいたします。"
     ],
     image: "/images/onboarding/onboarding_bg_5.jpg"
@@ -361,7 +364,7 @@ export default function App() {
       settings = { ...settings, voiceMode: "off" };
     }
     const trialLevel = normalizeTrialEnglishLevel(settings.englishLevel);
-    const trialSpeechOutput = normalizeTrialSpeechOutputProvider();
+    const trialSpeechOutput = normalizeTrialSpeechOutputProvider(settings.speechOutputProvider);
     if (settings.englishLevel !== trialLevel || settings.speechOutputProvider !== trialSpeechOutput || settings.dailyNewsNotificationsEnabled) {
       settings = { ...settings, englishLevel: trialLevel, speechOutputProvider: trialSpeechOutput, dailyNewsNotificationsEnabled: false };
     }
@@ -1140,6 +1143,10 @@ export default function App() {
           setBackupPassphrase={setBackupPassphrase}
           status={settingsStatus}
           onSettings={updateSettings}
+          onGeminiVoicePreview={(voice) => {
+            void playStaticSpeechPreview(geminiTtsVoicePreviewPath(voice))
+              .catch(() => setError("Gemini音声の例文を再生できませんでした。ネットワーク接続を確認してください。"));
+          }}
           onSaveApiKey={async () => {
             if (!apiKeyDraft.trim()) return showSettingsStatus({ section: "api", kind: "error", text: "APIキーを入力してください。" });
             const mode = data.settings.apiKeyMode;
@@ -1728,6 +1735,7 @@ function SettingsTab(props: {
   setBackupPassphrase: (value: string) => void;
   status: SettingsStatus;
   onSettings: (patch: Partial<AppSettings>) => void;
+  onGeminiVoicePreview: (voice: string) => void;
   onSaveApiKey: () => void;
   onClearApiKey: () => void;
   onTestConnection: () => void;
@@ -1795,7 +1803,7 @@ function SettingsTab(props: {
         </article>
         <article className="card trial-upgrade-card stack">
           <h3>Android製品版で使える機能</h3>
-          <p className="small muted">Daily Newsの配信・通知、会話分析、Gemini TTS、CEFR B1〜C2はAndroid製品版で利用できます。</p>
+          <p className="small muted">Daily Newsの配信・通知、会話分析、CEFR B1〜C2はAndroid製品版で利用できます。</p>
           <a href={TRIAL_EDITION.playStoreUrl} target="_blank" rel="noreferrer">Google Playで製品版を見る <ExternalLink size={14} /></a>
           <InlineStatus status={props.status} section="system" />
         </article>
@@ -1812,11 +1820,17 @@ function SettingsTab(props: {
       {section === "coach" && <div className="stack">
         <article className="grid settings-grid">
           <label>音声会話モード<select value={props.settings.voiceMode} onChange={(event) => props.onSettings({ voiceMode: event.target.value as AppSettings["voiceMode"] })}><option value="off">Off</option><option value="manual">読み上げ&amp;マイクオート</option></select></label>
-          <label>読み上げ方式<select value="device" disabled><option value="device">端末の読み上げ（無料・端末依存）</option></select></label>
-          <>
+          <label>読み上げ方式<select value={props.settings.speechOutputProvider} onChange={(event) => {
+            const speechOutputProvider = event.target.value as AppSettings["speechOutputProvider"];
+            props.onSettings({ speechOutputProvider });
+          }}><option value="device">端末の読み上げ（無料・端末依存）</option><option value="geminiTts">Gemini TTS（高品質・API利用）</option></select></label>
+          {props.settings.speechOutputProvider === "device" ? <>
             <label>Voice（端末音声）<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
             <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
-          </>
+          </> : <label>Voice(Gemini)※選択時に音声が再生されます<select value={props.settings.geminiTtsVoice} onChange={(event) => {
+            props.onSettings({ geminiTtsVoice: event.target.value });
+            props.onGeminiVoicePreview(event.target.value);
+          }}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice} — {GEMINI_TTS_VOICE_STYLES[voice]}</option>)}</select></label>}
         </article>
         <article data-tutorial-id={TUTORIAL_TARGETS.settingsCefr} className="card stack cefr-guide">
           <h3>CEFRレベルの目安</h3>

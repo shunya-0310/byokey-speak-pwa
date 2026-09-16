@@ -6,7 +6,7 @@ export const TRIAL_EDITION = {
   playStoreUrl: "https://play.google.com/store/apps/details?id=com.byokeylab.speak",
   allowedEnglishLevels: ["A1", "A2"] as const,
   analysisEnabled: false,
-  geminiTtsEnabled: false
+  geminiTtsEnabled: true
 } as const;
 
 export function canUseTrialGeminiTts() {
@@ -21,6 +21,7 @@ export function normalizeTrialEnglishLevel(level: EnglishLevel): EnglishLevel {
   return isTrialEnglishLevel(level) ? level : "A2";
 }
 
-export function normalizeTrialSpeechOutputProvider(): SpeechOutputProvider {
-  return "device";
+/** Gemini TTS is available in the trial; keep the visitor's selected output method. */
+export function normalizeTrialSpeechOutputProvider(provider: SpeechOutputProvider): SpeechOutputProvider {
+  return provider;
 }

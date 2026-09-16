@@ -8,14 +8,13 @@ APIキー、会話、Vocabulary、進捗、過去の分析結果はブラウザ�
 
 ## 体験版の範囲
 
-PWA版は無料の体験版です。Geminiテキスト会話、Quick Assist、端末の音声入力・読み上げ、Vocabulary List、学習記録、コーチ設定、バックアップを利用できます。
+PWA版は無料の体験版です。Geminiテキスト会話、Quick Assist、端末の音声入力・読み上げ、Gemini TTS、Vocabulary List、学習記録、コーチ設定、バックアップを利用できます。
 
 - Daily Newsの配信・通知は利用できません。
 - 新しい会話分析は利用できません。保存済みの分析結果は削除しません。
 - CEFRはA1・A2のみ選べます。保存済みのB1〜C2設定はA2へ安全に切り替えます。
-- Gemini TTSは利用できません。保存済みの設定は端末の読み上げへ切り替えます。
 
-Daily News、会話分析、CEFR B1〜C2、Gemini TTSはAndroid製品版で利用できます: https://play.google.com/store/apps/details?id=com.byokeylab.speak
+Daily News、会話分析、CEFR B1〜C2はAndroid製品版で利用できます: https://play.google.com/store/apps/details?id=com.byokeylab.speak
 
 ## 重要な注意
 
@@ -34,7 +33,10 @@ Daily News、会話分析、CEFR B1〜C2、Gemini TTSはAndroid製品版で利�
 ## 音声モード
 
 - **端末の読み上げ**: ブラウザ・OS標準音声を利用する無料モード。品質は端末により異なる。
+- **Gemini TTS**: `gemini-3.1-flash-tts-preview` から受信した音声チャンクを順次再生するモード。読み上げる本文は利用者のブラウザからGoogleへ直接送信され、API利用料が発生する場合があります。同じ返信の再生には端末内キャッシュを使います。
 - **読み上げ&マイクオート**: 返信を読み上げた後、英語マイクを自動で起動する補助モード。話し終えたら英マイクを押して送信する。
+
+`public/voice-previews/` には、BYOKey Labが一回だけGemini TTSで生成した各音声の短い例文を同梱します。設定画面での声の試聴は静的ファイルの再生であり、利用者のAPIキーやGemini APIを使用しません。
 
 ## 開発
 
