@@ -207,7 +207,7 @@ export async function generateSpeechWithGemini(input: {
   if (!audio?.data) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
   return validatePcmSpeech({
     data: audio.data,
-    mimeType: audio.mimeType || "audio/l16;rate=24000",
+    mimeType: audio.mimeType ?? "",
     sampleRate: audio.sampleRate,
     channels: audio.channels
   });
@@ -267,7 +267,7 @@ export async function streamSpeechWithGemini(input: {
     if (!audio?.data) return;
     const metadata: SpeechChunk = {
       data: audio.data,
-      mimeType: audio.mimeType || "audio/l16;rate=24000",
+      mimeType: audio.mimeType ?? "",
       sampleRate: audio.sampleRate,
       channels: audio.channels
     };

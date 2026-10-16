@@ -117,4 +117,11 @@ describe("gemini", () => {
     await expect(streamSpeechWithGemini({ apiKey: "test-key", model: "", text: "Hi", voice: "Kore", onAudio })).rejects.toThrow("PCM形式");
     expect(onAudio).not.toHaveBeenCalled();
   });
+
+  it("rejects audio with no declared MIME type", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "completed", steps: [{ type: "model_output", content: [{ type: "audio", data: "AAEAAg==" }] }]
+    }), { status: 200 })));
+    await expect(generateSpeechWithGemini({ apiKey: "test-key", model: "", text: "Hi", voice: "Kore" })).rejects.toThrow("形式");
+  });
 });
