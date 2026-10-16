@@ -71,8 +71,8 @@ describe("gemini", () => {
 
   it("plays TTS chunks as Gemini sends its SSE stream and combines them for the local cache", async () => {
     const payload = [
-      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"YQ==","mime_type":"audio/l16;rate=24000","sample_rate":24000}}',
-      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"Yg==","mime_type":"audio/l16;rate=24000","sample_rate":24000}}',
+      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"YWI=","mime_type":"audio/l16;rate=24000","sample_rate":24000}}',
+      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"Y2Q=","mime_type":"audio/l16;rate=24000","sample_rate":24000}}',
       'data: {"event_type":"interaction.completed","interaction":{"status":"completed"}}',
       "data: [DONE]"
     ].join("\n\n");
@@ -86,9 +86,9 @@ describe("gemini", () => {
       text: "Hello!",
       voice: "Kore",
       onAudio: (chunk) => received.push(chunk.data)
-    })).resolves.toEqual({ data: "YWI=", mimeType: "audio/l16;rate=24000", sampleRate: 24000, channels: undefined });
+    })).resolves.toEqual({ data: "YWJjZA==", mimeType: "audio/l16;rate=24000", sampleRate: 24000, channels: undefined });
 
-    expect(received).toEqual(["YWI="]);
+    expect(received).toEqual(["YWJjZA=="]);
     const request = fetchMock.mock.calls[0]?.[1];
     expect(JSON.parse(request.body).stream).toBe(true);
     expect(JSON.parse(request.body).input[0].content[0].text).toBe("Hello!");
@@ -104,5 +104,17 @@ describe("gemini", () => {
   ])("rejects bad or incomplete streams without returning cacheable audio", async (payload, message) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(payload, { status: 200 })));
     await expect(streamSpeechWithGemini({ apiKey: "test-key", model: "", text: "Hi", voice: "Puck", onAudio: () => {} })).rejects.toThrow(message);
+  });
+
+  it("rejects a WAV header split across PCM deltas before playback", async () => {
+    const payload = [
+      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"Ukk=","mime_type":"audio/l16"}}',
+      'data: {"event_type":"step.delta","delta":{"type":"audio","data":"RkY=","mime_type":"audio/l16"}}',
+      'data: {"event_type":"interaction.completed","interaction":{"status":"completed"}}'
+    ].join("\n\n");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(payload, { status: 200 })));
+    const onAudio = vi.fn();
+    await expect(streamSpeechWithGemini({ apiKey: "test-key", model: "", text: "Hi", voice: "Kore", onAudio })).rejects.toThrow("PCM形式");
+    expect(onAudio).not.toHaveBeenCalled();
   });
 });

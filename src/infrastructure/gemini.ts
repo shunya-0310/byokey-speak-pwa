@@ -154,7 +154,8 @@ function speechRequestBody(input: { model: string; text: string; voice: string }
 function validatePcmFormat(audio: GeneratedSpeech) {
   const mime = audio.mimeType.toLowerCase();
   const rate = /(?:^|;)\s*rate=(\d+)/.exec(mime);
-  if (!/^audio\/l16(?:;|$)/.test(mime) || (rate && Number(rate[1]) !== 24000) || (audio.sampleRate != null && audio.sampleRate !== 24000) || (audio.channels != null && audio.channels !== 1)) {
+  const channels = /(?:^|;)\s*channels=(\d+)/.exec(mime);
+  if (!/^audio\/l16(?:;|$)/.test(mime) || (rate && Number(rate[1]) !== 24000) || (channels && Number(channels[1]) !== 1) || (audio.sampleRate != null && audio.sampleRate !== 24000) || (audio.channels != null && audio.channels !== 1)) {
     throw new LlmError("provider", "Gemini TTSの音声形式が想定と異なります。再生を停止しました。");
   }
 }
@@ -251,6 +252,7 @@ export async function streamSpeechWithGemini(input: {
   const chunks: SpeechChunk[] = [];
   let completed = false;
   let pendingByte: number | undefined;
+  let initialBytes = new Uint8Array(0);
   await readSseJson(response.body, (payload) => {
     const event = payload as { event_type?: string; interaction?: { status?: string } };
     if (event.event_type === "error" || event.event_type === "interaction.failed") throw new LlmError("provider", "Gemini TTSのストリームが失敗しました。");
@@ -275,8 +277,19 @@ export async function streamSpeechWithGemini(input: {
     if (pendingByte != null) bytes[0] = pendingByte;
     bytes.set(incoming, pendingByte == null ? 0 : 1);
     pendingByte = bytes.length % 2 ? bytes[bytes.length - 1] : undefined;
-    const complete = bytes.subarray(0, bytes.length - (pendingByte == null ? 0 : 1));
+    let complete = bytes.subarray(0, bytes.length - (pendingByte == null ? 0 : 1));
     if (!complete.length) return;
+    if (!chunks.length) {
+      const first = new Uint8Array(initialBytes.length + complete.length);
+      first.set(initialBytes);
+      first.set(complete, initialBytes.length);
+      if (first.length < 4) {
+        initialBytes = first;
+        return;
+      }
+      complete = first;
+      initialBytes = new Uint8Array(0);
+    }
     const chunk = validatePcmSpeech({ ...metadata, data: bytesToBase64(complete) });
     chunks.push(chunk);
     input.onAudio(chunk);
