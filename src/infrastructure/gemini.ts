@@ -1,5 +1,7 @@
 import { conversationAnalysisSchema } from "../domain/schemas";
 import type { CoachReply, ConversationAnalysisResult, LlmSource } from "../domain/models";
+import { DEFAULT_GEMINI_TTS_MODEL } from "../domain/models";
+import ttsConfig from "../domain/tts-config.json";
 
 export type LlmErrorKind = "missing_api_key" | "invalid_api_key" | "invalid_model" | "billing" | "rate_limit" | "network" | "provider" | "unknown";
 
@@ -137,6 +139,35 @@ export type GeneratedSpeech = {
 
 type SpeechChunk = GeneratedSpeech;
 
+const TTS_STYLE = ttsConfig.style;
+
+function speechRequestBody(input: { model: string; text: string; voice: string }, stream = false) {
+  return {
+    model: input.model.trim().replace(/^models\//, "") || DEFAULT_GEMINI_TTS_MODEL,
+    input: [{ type: "user_input", content: [{ type: "text", text: input.text.trim(), annotations: [{ type: "speech_metadata", style: TTS_STYLE }] }] }],
+    response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
+    generation_config: { speech_config: [{ voice: input.voice || "Kore" }] },
+    ...(stream ? { stream: true } : {})
+  };
+}
+
+function validatePcmFormat(audio: GeneratedSpeech) {
+  const mime = audio.mimeType.toLowerCase();
+  const rate = /(?:^|;)\s*rate=(\d+)/.exec(mime);
+  if (!/^audio\/l16(?:;|$)/.test(mime) || (rate && Number(rate[1]) !== 24000) || (audio.sampleRate != null && audio.sampleRate !== 24000) || (audio.channels != null && audio.channels !== 1)) {
+    throw new LlmError("provider", "Gemini TTSの音声形式が想定と異なります。再生を停止しました。");
+  }
+}
+
+export function validatePcmSpeech(audio: GeneratedSpeech): GeneratedSpeech {
+  validatePcmFormat(audio);
+  const bytes = base64ToBytes(audio.data);
+  if (!bytes.length || bytes.length % 2 || (bytes.length >= 4 && String.fromCharCode(...bytes.subarray(0, 4)) === "RIFF")) {
+    throw new LlmError("provider", "Gemini TTSの音声データがPCM形式ではありません。再生を停止しました。");
+  }
+  return audio;
+}
+
 export async function generateSpeechWithGemini(input: {
   apiKey: string;
   model: string;
@@ -147,18 +178,7 @@ export async function generateSpeechWithGemini(input: {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
   const text = input.text.trim();
   if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
-  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
-  const body = {
-    model,
-    input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
-    // Keep this aligned with the official non-streaming REST example.
-    // The additional output-format fields are rejected by some Preview TTS
-    // configurations even though they are documented for the audio format.
-    response_format: { type: "audio" },
-    generation_config: {
-      speech_config: [{ voice: input.voice || "Kore" }]
-    }
-  };
+  const body = speechRequestBody({ ...input, text });
 
   let response: Response;
   try {
@@ -184,15 +204,15 @@ export async function generateSpeechWithGemini(input: {
   }
   const audio = collectAudio(JSON.parse(raw));
   if (!audio?.data) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
-  return {
+  return validatePcmSpeech({
     data: audio.data,
     mimeType: audio.mimeType || "audio/l16;rate=24000",
     sampleRate: audio.sampleRate,
     channels: audio.channels
-  };
+  });
 }
 
-/** Streams raw PCM chunks directly from Gemini 3.1 Flash TTS. */
+/** Streams validated raw PCM chunks directly from Gemini TTS. */
 export async function streamSpeechWithGemini(input: {
   apiKey: string;
   model: string;
@@ -204,14 +224,7 @@ export async function streamSpeechWithGemini(input: {
   if (!input.apiKey.trim()) throw new LlmError("missing_api_key", userMessageForError("missing_api_key"));
   const text = input.text.trim();
   if (!text) throw new LlmError("unknown", "読み上げるテキストがありません。");
-  const model = input.model.trim().replace(/^models\//, "") || "gemini-3.1-flash-tts-preview";
-  const body = {
-    model,
-    input: `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${text}`,
-    response_format: { type: "audio" },
-    generation_config: { speech_config: [{ voice: input.voice || "Kore" }] },
-    stream: true
-  };
+  const body = speechRequestBody({ ...input, text }, true);
   let response: Response;
   try {
     response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
@@ -236,19 +249,39 @@ export async function streamSpeechWithGemini(input: {
   if (!response.body) throw new LlmError("provider", "Gemini TTSのストリームを開始できませんでした。");
 
   const chunks: SpeechChunk[] = [];
+  let completed = false;
+  let pendingByte: number | undefined;
   await readSseJson(response.body, (payload) => {
+    const event = payload as { event_type?: string; interaction?: { status?: string } };
+    if (event.event_type === "error" || event.event_type === "interaction.failed") throw new LlmError("provider", "Gemini TTSのストリームが失敗しました。");
+    if (event.event_type === "interaction.completed") {
+      if (event.interaction?.status !== "completed") throw new LlmError("provider", "Gemini TTSが正常終了しませんでした。");
+      completed = true;
+      return;
+    }
+    if (event.event_type !== "step.delta") return;
+    if (completed) throw new LlmError("provider", "Gemini TTSの完了後に音声を受信しました。");
     const audio = collectAudio(payload);
     if (!audio?.data) return;
-    const chunk: SpeechChunk = {
+    const metadata: SpeechChunk = {
       data: audio.data,
       mimeType: audio.mimeType || "audio/l16;rate=24000",
       sampleRate: audio.sampleRate,
       channels: audio.channels
     };
+    validatePcmFormat(metadata);
+    const incoming = base64ToBytes(metadata.data);
+    const bytes = new Uint8Array(incoming.length + (pendingByte == null ? 0 : 1));
+    if (pendingByte != null) bytes[0] = pendingByte;
+    bytes.set(incoming, pendingByte == null ? 0 : 1);
+    pendingByte = bytes.length % 2 ? bytes[bytes.length - 1] : undefined;
+    const complete = bytes.subarray(0, bytes.length - (pendingByte == null ? 0 : 1));
+    if (!complete.length) return;
+    const chunk = validatePcmSpeech({ ...metadata, data: bytesToBase64(complete) });
     chunks.push(chunk);
     input.onAudio(chunk);
   }, input.signal);
-  if (!chunks.length) throw new LlmError("provider", "Gemini TTSの音声データを取得できませんでした。");
+  if (!completed || !chunks.length || pendingByte != null || input.signal?.aborted) throw new LlmError("provider", "Gemini TTSの音声ストリームが正常終了しませんでした。");
   const first = chunks[0];
   return {
     data: concatBase64Pcm(chunks.map((chunk) => chunk.data)),
@@ -411,11 +444,10 @@ function parseSseEvent(event: string, onEvent: (payload: unknown) => void) {
     .map((line) => line.slice(5).trimStart())
     .join("\n");
   if (!data || data === "[DONE]") return;
-  try {
-    onEvent(JSON.parse(data));
-  } catch {
-    // Metadata events do not contain playable audio.
-  }
+  let payload: unknown;
+  try { payload = JSON.parse(data); }
+  catch { throw new LlmError("provider", "Gemini TTSの応答を解析できませんでした。"); }
+  onEvent(payload);
 }
 
 function concatBase64Pcm(parts: string[]) {
@@ -427,10 +459,14 @@ function concatBase64Pcm(parts: string[]) {
     merged.set(part, offset);
     offset += part.length;
   }
+  return bytesToBase64(merged);
+}
+
+function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
   const chunkSize = 0x8000;
-  for (let index = 0; index < merged.length; index += chunkSize) {
-    binary += String.fromCharCode(...merged.subarray(index, index + chunkSize));
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
   }
   return btoa(binary);
 }

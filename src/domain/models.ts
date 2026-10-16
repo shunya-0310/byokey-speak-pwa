@@ -1,3 +1,5 @@
+import ttsConfig from "./tts-config.json";
+
 export type ThemeMode = "dark" | "light";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 /** When enabled, the coach reply is read aloud and then the English mic starts. */
@@ -15,8 +17,9 @@ export const GEMINI_MODELS = [
   { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", recommended: false }
 ] as const;
 
+export const DEFAULT_GEMINI_TTS_MODEL = ttsConfig.model;
 export const GEMINI_TTS_MODELS = [
-  { id: "gemini-3.1-flash-tts-preview", label: "Gemini 3.1 Flash TTS（ストリーミング）", recommended: true }
+  { id: DEFAULT_GEMINI_TTS_MODEL, label: "Gemini 3.8 Flash-Lite TTS（ストリーミング）", recommended: true }
 ] as const;
 
 export const GEMINI_TTS_VOICES = [

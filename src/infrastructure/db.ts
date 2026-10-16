@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_GEMINI_TTS_MODEL,
   type AppSettings,
   type Chat,
   type ChatMessage,
@@ -74,6 +75,16 @@ export function generatedSpeechCacheId(messageId: string, model: string, voice: 
   return `gemini-tts-v1:${messageId}:${model.trim().replace(/^models\//, "")}:${voice.trim() || "Kore"}`;
 }
 
+export function normalizeTtsModel(model: unknown): string {
+  const value = typeof model === "string" ? model.trim().replace(/^models\//, "") : "";
+  return !value || value === "gemini-3.1-flash-tts-preview" ? DEFAULT_GEMINI_TTS_MODEL : value;
+}
+
+export function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
+  const merged = { ...DEFAULT_SETTINGS, ...settings };
+  return { ...merged, geminiTtsModel: normalizeTtsModel(merged.geminiTtsModel) };
+}
+
 export async function getCachedGeneratedSpeech(id: string) {
   const cached = await db.generatedSpeechCache.get(id);
   if (!cached) return undefined;
@@ -112,11 +123,11 @@ export function id(prefix: string) {
 
 export async function loadSettings() {
   const row = await db.settings.get("settings");
-  return { ...DEFAULT_SETTINGS, ...row?.value };
+  return normalizeSettings(row?.value ?? {});
 }
 
 export async function saveSettings(settings: AppSettings) {
-  await db.settings.put({ id: "settings", value: settings });
+  await db.settings.put({ id: "settings", value: normalizeSettings(settings) });
 }
 
 export async function ensureFirstChat() {

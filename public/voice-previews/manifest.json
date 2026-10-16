@@ -1,5 +1,4 @@
 {
-  "generatedWith": "gemini-3.1-flash-tts-preview",
   "sampleText": "Hello! I am your English coach. Let’s practice together.",
   "format": "WAV / 16-bit PCM",
   "note": "Bundled Gemini voice samples. Playback does not invoke the Gemini API.",
@@ -10,7 +9,8 @@
       "status": "generated",
       "bytes": 205484,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Puck",
@@ -18,7 +18,8 @@
       "status": "generated",
       "bytes": 205484,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Charon",
@@ -26,7 +27,8 @@
       "status": "generated",
       "bytes": 211244,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Fenrir",
@@ -34,7 +36,8 @@
       "status": "generated",
       "bytes": 234284,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Aoede",
@@ -42,7 +45,8 @@
       "status": "generated",
       "bytes": 220844,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Leda",
@@ -50,7 +54,8 @@
       "status": "generated",
       "bytes": 251564,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Orus",
@@ -58,7 +63,8 @@
       "status": "generated",
       "bytes": 230444,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Zephyr",
@@ -66,7 +72,8 @@
       "status": "generated",
       "bytes": 220844,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Callirrhoe",
@@ -74,7 +81,8 @@
       "status": "generated",
       "bytes": 224684,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Autonoe",
@@ -82,7 +90,8 @@
       "status": "generated",
       "bytes": 253484,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Enceladus",
@@ -90,7 +99,8 @@
       "status": "generated",
       "bytes": 220844,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Iapetus",
@@ -98,7 +108,8 @@
       "status": "generated",
       "bytes": 226604,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Umbriel",
@@ -106,7 +117,8 @@
       "status": "generated",
       "bytes": 238124,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Algieba",
@@ -114,7 +126,8 @@
       "status": "generated",
       "bytes": 218924,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Despina",
@@ -122,7 +135,8 @@
       "status": "generated",
       "bytes": 218924,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Erinome",
@@ -130,7 +144,8 @@
       "status": "generated",
       "bytes": 228524,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Algenib",
@@ -138,7 +153,8 @@
       "status": "generated",
       "bytes": 215084,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Rasalgethi",
@@ -146,7 +162,8 @@
       "status": "generated",
       "bytes": 209324,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Laomedeia",
@@ -154,7 +171,8 @@
       "status": "generated",
       "bytes": 215084,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Achernar",
@@ -162,7 +180,8 @@
       "status": "generated",
       "bytes": 220844,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Alnilam",
@@ -170,7 +189,8 @@
       "status": "generated",
       "bytes": 226604,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Schedar",
@@ -178,7 +198,8 @@
       "status": "generated",
       "bytes": 217004,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Gacrux",
@@ -186,7 +207,8 @@
       "status": "generated",
       "bytes": 232364,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Pulcherrima",
@@ -194,7 +216,8 @@
       "status": "generated",
       "bytes": 220844,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Achird",
@@ -202,7 +225,8 @@
       "status": "generated",
       "bytes": 217004,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Zubenelgenubi",
@@ -210,7 +234,8 @@
       "status": "generated",
       "bytes": 215084,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Vindemiatrix",
@@ -218,7 +243,8 @@
       "status": "generated",
       "bytes": 230444,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Sadachbia",
@@ -226,7 +252,8 @@
       "status": "generated",
       "bytes": 230444,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Sadaltager",
@@ -234,7 +261,8 @@
       "status": "generated",
       "bytes": 222764,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     },
     {
       "voice": "Sulafat",
@@ -242,7 +270,8 @@
       "status": "generated",
       "bytes": 228524,
       "sampleRate": 24000,
-      "channels": 1
+      "channels": 1,
+      "model": "gemini-3.1-flash-tts-preview"
     }
   ]
 }

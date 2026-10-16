@@ -72,8 +72,8 @@ async function checkViewport(contextOptions) {
     await page.getByRole("tablist", { name: "Settings sections" }).getByRole("button", { name: "レベル、コーチ設定" }).click();
     const speechOutput = page.getByLabel("読み上げ方式");
     await speechOutput.selectOption("geminiTts");
-    await page.getByLabel("Voice(Gemini)※選択時に音声が再生されます").waitFor({ timeout: 10000 });
-    const previewStatus = await page.evaluate(async () => (await fetch("/voice-previews/kore.wav")).status);
+    await page.getByLabel("Voice(Gemini)※選択時に旧モデル生成の試聴音声が再生されます").waitFor({ timeout: 10000 });
+    const previewStatus = await page.evaluate(async () => (await globalThis.fetch("/voice-previews/kore.wav")).status);
     if (previewStatus !== 200) throw new Error(`Gemini voice preview was not served: ${previewStatus}`);
     await context.close();
   } finally {

@@ -63,7 +63,7 @@ import {
   setEquivalentVocabFavorite
 } from "../infrastructure/db";
 import { clearPersistentApiKey, clearSessionApiKey, decryptBackupJson, encryptBackupJson, getActiveApiKey, hasActiveApiKey, savePersistentApiKey, saveSessionApiKey } from "../infrastructure/crypto";
-import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, type LlmError } from "../infrastructure/gemini";
+import { generateWithGemini, parseAnalysis, parseCoachReply, streamSpeechWithGemini, transcribeAudioWithGemini, userMessageForError, validatePcmSpeech, type LlmError } from "../infrastructure/gemini";
 import { isPreviewOrigin, isTrustedPersistentOrigin } from "../infrastructure/pwa";
 import { trackAnalyticsEvent } from "../infrastructure/analytics";
 import { canRecordAudio, canRecognizeSpeech, playStaticSpeechPreview, shouldUseGeminiMicFallback, speakCoachText, startGeneratedSpeechStream, startSpeechRecognitionSession, startWavRecorder, stopSpeaking, type GeneratedSpeechStream, type MicLanguage, type SpeechRecognitionSession, type WavRecorder } from "../infrastructure/speech";
@@ -782,7 +782,14 @@ export default function App() {
       };
       try {
         const cacheId = generatedSpeechCacheId(message.id, currentData.settings.geminiTtsModel, currentData.settings.geminiTtsVoice);
-        const cachedSpeech = await getCachedGeneratedSpeech(cacheId);
+        let cachedSpeech = await getCachedGeneratedSpeech(cacheId);
+        if (cachedSpeech) {
+          try { validatePcmSpeech(cachedSpeech); }
+          catch {
+            await db.generatedSpeechCache.delete(cacheId);
+            cachedSpeech = undefined;
+          }
+        }
         if (abortController.signal.aborted) return;
         if (cachedSpeech) {
           streamRef.current?.enqueue({ base64Audio: cachedSpeech.data, sampleRate: cachedSpeech.sampleRate, channels: cachedSpeech.channels });
@@ -1827,7 +1834,7 @@ function SettingsTab(props: {
           {props.settings.speechOutputProvider === "device" ? <>
             <label>Voice（端末音声）<select value={props.settings.voiceGender} onChange={(event) => props.onSettings({ voiceGender: event.target.value as AppSettings["voiceGender"] })}><option value="female">Female</option><option value="male">Male</option></select></label>
             <label>読み上げ速度 <span className="small muted">{props.settings.voiceRate.toFixed(1)}x</span><input type="range" min="0.6" max="1.5" step="0.1" value={props.settings.voiceRate} onChange={(event) => props.onSettings({ voiceRate: Number(event.target.value) })} /></label>
-          </> : <label>Voice(Gemini)※選択時に音声が再生されます<select value={props.settings.geminiTtsVoice} onChange={(event) => {
+          </> : <label>Voice(Gemini)※選択時に旧モデル生成の試聴音声が再生されます<select value={props.settings.geminiTtsVoice} onChange={(event) => {
             props.onSettings({ geminiTtsVoice: event.target.value });
             props.onGeminiVoicePreview(event.target.value);
           }}>{GEMINI_TTS_VOICES.map((voice) => <option key={voice} value={voice}>{voice} — {GEMINI_TTS_VOICE_STYLES[voice]}</option>)}</select></label>}

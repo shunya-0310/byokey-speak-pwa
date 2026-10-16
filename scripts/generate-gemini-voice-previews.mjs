@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,11 +16,13 @@ if (!apiKey?.trim()) {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDir = path.join(root, "public", "voice-previews");
-const model = "gemini-3.1-flash-tts-preview";
+const { model, style } = JSON.parse(await readFile(path.join(root, "src", "domain", "tts-config.json"), "utf8"));
 const sampleText = "Hello! I am your English coach. Let’s practice together.";
-const prompt = `Read aloud naturally as a warm English conversation coach. Keep the pacing clear and expressive:\n\n${sampleText}`;
 const force = process.argv.includes("--force");
 const fetchFromNode = globalThis.fetch;
+const manifestPath = path.join(outputDir, "manifest.json");
+const previousManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+const previousVoices = new Map(previousManifest.voices.map((item) => [item.file, item]));
 
 await mkdir(outputDir, { recursive: true });
 const generated = [];
@@ -29,7 +31,9 @@ for (const voice of voices) {
   const outputPath = path.join(outputDir, filename);
   if (!force && await exists(outputPath)) {
     console.log(`skip ${voice} (already exists)`);
-    generated.push({ voice, file: filename, status: "existing" });
+    const previous = previousVoices.get(filename);
+    if (!previous?.model && !previousManifest.generatedWith) throw new Error(`${voice}: existing file has no known generation model.`);
+    generated.push({ ...previous, voice, file: filename, status: "existing", model: previous?.model ?? previousManifest.generatedWith });
     continue;
   }
 
@@ -42,8 +46,8 @@ for (const voice of voices) {
     },
     body: JSON.stringify({
       model,
-      input: prompt,
-      response_format: { type: "audio" },
+      input: [{ type: "user_input", content: [{ type: "text", text: sampleText, annotations: [{ type: "speech_metadata", style }] }] }],
+      response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
       generation_config: { speech_config: [{ voice }] }
     })
   });
@@ -51,16 +55,19 @@ for (const voice of voices) {
   if (!response.ok) throw new Error(`${voice}: Gemini TTS request failed (${response.status}).`);
   const audio = findAudio(JSON.parse(raw));
   if (!audio?.data) throw new Error(`${voice}: Gemini TTS response did not include audio.`);
+  if (!/^audio\/l16(?:;|$)/i.test(audio.mimeType ?? "") || (audio.sampleRate != null && audio.sampleRate !== 24000) || (audio.channels != null && audio.channels !== 1)) {
+    throw new Error(`${voice}: unexpected audio format.`);
+  }
   const pcm = Buffer.from(audio.data, "base64");
+  if (!pcm.length || pcm.length % 2 || pcm.toString("ascii", 0, 4) === "RIFF") throw new Error(`${voice}: expected raw PCM audio.`);
   const sampleRate = audio.sampleRate ?? sampleRateFromMime(audio.mimeType) ?? 24000;
   const channels = audio.channels ?? 1;
   await writeFile(outputPath, pcmToWav(pcm, sampleRate, channels));
   const bytes = (await stat(outputPath)).size;
-  generated.push({ voice, file: filename, status: "generated", bytes, sampleRate, channels });
+  generated.push({ voice, file: filename, status: "generated", model, bytes, sampleRate, channels });
 }
 
-await writeFile(path.join(outputDir, "manifest.json"), `${JSON.stringify({
-  generatedWith: model,
+await writeFile(manifestPath, `${JSON.stringify({
   sampleText,
   format: "WAV / 16-bit PCM",
   note: "Bundled Gemini voice samples. Playback does not invoke the Gemini API.",
